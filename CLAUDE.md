@@ -74,15 +74,17 @@ feature는 다음이 모두 참일 때만 `passing`으로 전환한다:
 
 ```
 pnpm install                 # 의존성 설치
-pnpm turbo build             # 전체 빌드 (의존성 순서대로)
-pnpm turbo lint              # ESLint
-pnpm turbo check-types       # tsc --noEmit
-pnpm turbo dev               # frontend + backend 동시 실행 (주의: 아직 dev 스크립트 없음 — monorepo-setup에서 추가 예정)
-pnpm turbo test              # Vitest (주의: 아직 test 태스크 없음 — monorepo-setup에서 추가 예정)
+pnpm build                   # 전체 빌드 (의존성 순서대로, turbo run build)
+pnpm lint                    # ESLint (turbo run lint)
+pnpm check-types             # tsc --noEmit (turbo run check-types)
+pnpm dev                     # frontend(vite, :5173) + backend(tsx watch, :3001) 동시 실행
+pnpm test                    # Vitest (turbo run test)
 ```
 
-테스트 프레임워크는 Vitest로 통일한다(Vite와 같은 파이프라인, 모노레포 `projects` 옵션으로
-frontend는 jsdom, backend는 node 환경으로 분리). 백엔드 REST API 테스트는 Supertest를 병행한다.
+테스트 프레임워크는 Vitest로 통일한다(Vite와 같은 파이프라인). frontend는 jsdom, backend는
+node 환경으로, 각 앱 자체 `vitest.config.ts`에서 분리했다(Vitest의 단일 루트 `projects` 옵션
+대신 turbo가 워크스페이스별로 병렬 실행하는 방식 — turbo가 이미 제공하는 것과 중복이라 단순화).
+백엔드 REST API 테스트는 Supertest를 병행한다.
 
 ## 세부 문서
 
