@@ -6,11 +6,12 @@
 - Standard startup path: `./init.sh` (`pnpm install` → `pnpm turbo run build lint check-types test`).
   `pnpm turbo run dev`로 frontend(vite, :5173)와 backend(tsx watch, :3001)가 실제로 기동된다.
 - 표준 검증 경로: `pnpm turbo run build lint check-types test`
-- Current highest-priority unfinished feature: `shared-types` (다만 `docs/data-model.md`가 스텁이라
-  바로 시작할 수 없음 — 먼저 그 문서를 채워야 한다)
-- Current blocker: `docs/api-spec.md`, `docs/ws-protocol.md`, `docs/data-model.md`,
-  `docs/acceptance-criteria.md`가 전부 스텁 상태 (`docs/product-plan.md`는 이번 세션에 채워짐).
-  `shared-types` 이후 feature들을 시작하려면 해당 문서의 실제 내용을 먼저 채워야 한다.
+- Current highest-priority unfinished feature: `shared-types` — `docs/data-model.md`가 채워져서
+  이제 바로 시작 가능 (packages/shared-types 패키지 스캐폴딩부터)
+- Current blocker: `docs/api-spec.md`, `docs/ws-protocol.md`, `docs/acceptance-criteria.md`가 여전히
+  스텁 상태 (`docs/product-plan.md`, `docs/data-model.md`는 채워짐). `rest-api`, `ws-protocol`,
+  그리고 `collab-canvas`/`ai-image-generation`/`node-graph`/`preview-3d`(acceptance-criteria
+  시나리오 참조)를 시작하려면 해당 문서를 먼저 채워야 한다.
 
 ## Session Log
 
@@ -101,3 +102,34 @@
   `docs/api-spec.md`/`docs/ws-protocol.md`를 먼저 채워 `rest-api`/`ws-protocol`을 준비해도 된다.
   어느 쪽이든, 이 세션에서 세운 규칙대로 한 세션에 문서 하나 + 그 문서에 대응하는 feature 하나만
   진행할 것.
+
+### Session 003
+
+- Date: 2026-07-07
+- Goal: 루트 `package.json`에 빠져 있던 `test` 스크립트를 추가하고, `docs/data-model.md` 스텁을
+  실제 스키마로 채운다.
+- Completed:
+  - 루트 `package.json`에 `"test": "turbo run test"` 추가 (`turbo.json`엔 태스크가 있었는데
+    루트에서 `pnpm test`로 바로 실행할 방법이 없었음). `CLAUDE.md` 명령어 절의 낡은 "아직 없음"
+    주석도 실제 상태로 갱신하고, Vitest `projects` 옵션 대신 앱별 `vitest.config.ts` + turbo
+    병렬 실행을 쓰기로 한 결정을 명시.
+  - `docs/data-model.md` 작성: Y.Doc 최상위 구조(`canvasObjects`, `canvasObjectOrder`(z-order를
+    별도 Y.Array로 분리한 이유 포함), `nodes`, `edges`), 캔버스 오브젝트/노드/엣지 필드,
+    캔버스↔노드그래프 연결 방식(단방향 참조로 상태 중복 방지), awareness 상태 타입, WS 메시지
+    상위 구조(`WS_MESSAGE_TYPE` 상수, 바이트 인코딩 상세는 ws-protocol.md로 위임), `shared-types`가
+    export할 타입 이름 확정(`CanvasObject`, `GraphNode`, `NodeStatus`, `GraphEdge`,
+    `AwarenessState`, `WS_MESSAGE_TYPE`/`WsMessageType`).
+- Verification run: `pnpm test`(루트) 실행해 새 스크립트가 `turbo run test`와 동일하게 동작하는지
+  확인 (4/4 태스크 성공, frontend/backend 각 1개 테스트 통과). `docs/data-model.md`는 문서 작업이라
+  별도 자동 검증 없음 — `docs/acceptance-criteria.md`의 시나리오(재접속 동기화, 생성 실패 처리,
+  노드 클릭 시 캔버스 반영)와 필드가 어긋나지 않는지 교차 확인함.
+- Evidence captured: `pnpm test` 터미널 출력.
+- Commits: 세션 종료 시점에 커밋 예정.
+- Files or artifacts updated: `package.json`, `CLAUDE.md`, `docs/data-model.md`,
+  `feature_list.json`(`shared-types` notes 갱신), `claude-progress.md`.
+- Known risk or unresolved issue:
+  - `docs/api-spec.md`, `docs/ws-protocol.md`, `docs/acceptance-criteria.md`는 여전히 스텁.
+  - `packages/shared-types`는 아직 스캐폴딩도 되어 있지 않음 — 다음 세션에서 시작.
+- Next best step: `shared-types` feature 시작 — `packages/shared-types` 패키지 생성(package.json,
+  tsconfig, turbo build 연결) 후 `docs/data-model.md` 6번 섹션에 나열된 이름 그대로 타입 작성,
+  `apps/frontend`/`apps/backend` 양쪽에서 import해 tsc 에러 없는지 확인.
