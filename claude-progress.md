@@ -8,10 +8,11 @@
 - 표준 검증 경로: `pnpm turbo run build lint check-types test`
 - Current highest-priority unfinished feature: `shared-types` — `docs/data-model.md`가 채워져서
   이제 바로 시작 가능 (packages/shared-types 패키지 스캐폴딩부터)
-- Current blocker: `docs/api-spec.md`, `docs/ws-protocol.md`, `docs/acceptance-criteria.md`가 여전히
-  스텁 상태 (`docs/product-plan.md`, `docs/data-model.md`는 채워짐). `rest-api`, `ws-protocol`,
+- Current blocker: `docs/api-spec.md`, `docs/acceptance-criteria.md`가 여전히 스텁 상태
+  (`docs/product-plan.md`, `docs/data-model.md`, `docs/ws-protocol.md`는 채워짐). `rest-api`,
   그리고 `collab-canvas`/`ai-image-generation`/`node-graph`/`preview-3d`(acceptance-criteria
-  시나리오 참조)를 시작하려면 해당 문서를 먼저 채워야 한다.
+  시나리오 참조)를 시작하려면 해당 문서를 먼저 채워야 한다. `ws-protocol`은 문서가 준비됐으니
+  바로 시작 가능(다만 `shared-types`가 priority 순서상 먼저).
 
 ## Session Log
 
@@ -124,7 +125,7 @@
   별도 자동 검증 없음 — `docs/acceptance-criteria.md`의 시나리오(재접속 동기화, 생성 실패 처리,
   노드 클릭 시 캔버스 반영)와 필드가 어긋나지 않는지 교차 확인함.
 - Evidence captured: `pnpm test` 터미널 출력.
-- Commits: 세션 종료 시점에 커밋 예정.
+- Commits: `4607229`.
 - Files or artifacts updated: `package.json`, `CLAUDE.md`, `docs/data-model.md`,
   `feature_list.json`(`shared-types` notes 갱신), `claude-progress.md`.
 - Known risk or unresolved issue:
@@ -133,3 +134,32 @@
 - Next best step: `shared-types` feature 시작 — `packages/shared-types` 패키지 생성(package.json,
   tsconfig, turbo build 연결) 후 `docs/data-model.md` 6번 섹션에 나열된 이름 그대로 타입 작성,
   `apps/frontend`/`apps/backend` 양쪽에서 import해 tsc 에러 없는지 확인.
+
+### Session 004
+
+- Date: 2026-07-07
+- Goal: `docs/ws-protocol.md` 스텁을 실제 프로토콜 정의로 채운다.
+- Completed:
+  - `docs/ws-protocol.md` 작성: "서버는 병합/재해석하지 않는다"는 규칙이 "room별 Y.Doc을 메모리에
+    유지한다"와 모순되지 않는 이유를 0번 섹션에서 먼저 정리(Yjs의 일반 CRDT 병합은 허용, 도메인
+    구조를 들여다보는 로직만 금지). envelope 구조(`WS_MESSAGE_TYPE` + y-protocols/sync 서브타입),
+    양방향 SyncStep1/2 핸드셰이크 시퀀스(다이어그램 포함), 중계 규칙(SyncStep1/2는 1:1 응답,
+    Update/Awareness만 다른 클라이언트에 브로드캐스트), room 생명주기(lazy 생성, 마지막 클라이언트
+    퇴장 시 정리, 재접속 시나리오가 acceptance-criteria 시나리오 4와 어떻게 맞물리는지), 구현 시
+    추가해야 할 의존성(yjs, y-protocols, lib0 — 아직 apps/backend에 없음), 검증 테스트 설계
+    스케치까지 포함.
+  - `CLAUDE.md`, `feature_list.json`의 `docs/ws-protocol.md` 스텁 표시를 "작성됨"으로 갱신하고,
+    `ws-protocol` feature의 verification에 재접속 시나리오 확인 항목을 추가.
+- Verification run: 문서 작업이라 자동 검증 없음 — `docs/data-model.md`의 `WS_MESSAGE_TYPE`
+  정의, `docs/architecture.md`의 room/relay 규칙, `docs/acceptance-criteria.md`의 재접속
+  시나리오(4번)와 내용이 어긋나지 않는지 교차 확인함.
+- Evidence captured: 해당 없음(문서만 변경, 코드 변경 없음).
+- Commits: 세션 종료 시점에 커밋 예정.
+- Files or artifacts updated: `docs/ws-protocol.md`, `CLAUDE.md`, `feature_list.json`,
+  `claude-progress.md`.
+- Known risk or unresolved issue:
+  - `docs/api-spec.md`, `docs/acceptance-criteria.md`는 여전히 스텁.
+  - `packages/shared-types`는 여전히 스캐폴딩되어 있지 않음 — priority상 `shared-types`가
+    `ws-protocol`보다 먼저다.
+- Next best step: priority 순서대로면 `shared-types` feature(패키지 스캐폴딩 + 타입 작성)가
+  다음. `ws-protocol` 구현은 그 다음 순서지만 문서는 이미 준비돼 있어 언제 시작해도 막히지 않는다.
