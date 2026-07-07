@@ -1,0 +1,157 @@
+{
+  "project": "canvas-v",
+  "last_updated": "2026-07-07",
+  "rules": {
+    "single_active_feature": true,
+    "passing_requires_evidence": true,
+    "do_not_skip_verification": true
+  },
+  "status_legend": {
+    "not_started": "Work has not begun.",
+    "in_progress": "The feature is the current active task.",
+    "blocked": "Work cannot continue until a documented blocker is resolved.",
+    "passing": "Required verification has passed and evidence is recorded."
+  },
+  "features": [
+    {
+      "id": "monorepo-setup",
+      "priority": 1,
+      "area": "infra",
+      "title": "Turborepo 뼈대 완성",
+      "user_visible_behavior": "저장소 루트에서 pnpm install, pnpm turbo build/lint/check-types/test가 모두 성공한다.",
+      "status": "in_progress",
+      "verification": [
+        "pnpm install이 에러 없이 끝난다.",
+        "pnpm turbo build가 성공한다 (apps/frontend, apps/backend, packages/* 전부).",
+        "pnpm turbo lint가 성공한다.",
+        "pnpm turbo check-types가 성공한다.",
+        "pnpm turbo test 실행 시 apps/frontend, apps/backend 양쪽 워크스페이스에서 각각 최소 1개 테스트가 통과한다."
+      ],
+      "evidence": [],
+      "notes": "packages/eslint-config, packages/prettier-config, packages/typescript-config와 turbo build/lint/check-types/format 태스크는 이미 구성되어 통과 중. 남은 범위: apps/frontend에 vite, react-dom, dev/build 스크립트 추가, apps/backend에 express, ws, dev 스크립트 추가, turbo.json에 test 태스크 추가, Vitest 설정(projects: frontend는 jsdom, backend는 node 환경), 백엔드는 Supertest 병행. packages/shared-types 생성은 별도 feature(shared-types)로 분리되어 이 feature의 범위 밖."
+    },
+    {
+      "id": "shared-types",
+      "priority": 2,
+      "area": "packages/shared-types",
+      "title": "공유 타입 패키지",
+      "user_visible_behavior": "frontend와 backend가 노드/엣지/캔버스 오브젝트/WS 메시지 타입을 하나의 소스에서 import해서 쓴다.",
+      "status": "not_started",
+      "verification": [
+        "docs/data-model.md에 정의된 스키마가 packages/shared-types의 TypeScript 타입으로 존재한다.",
+        "apps/frontend에서 @repo/shared-types를 import했을 때 tsc 에러가 없다.",
+        "apps/backend에서 @repo/shared-types를 import했을 때 tsc 에러가 없다."
+      ],
+      "evidence": [],
+      "notes": "docs/data-model.md가 스텁 상태이므로, 실제 스키마 내용을 먼저 채워야 이 feature를 시작할 수 있다."
+    },
+    {
+      "id": "canvas-crud",
+      "priority": 3,
+      "area": "apps/frontend",
+      "title": "캔버스 오브젝트 로컬 CRUD",
+      "user_visible_behavior": "사용자가 캔버스에서 오브젝트를 추가/이동/크기조절/회전/삭제/순서변경할 수 있다 (협업 없이 로컬 상태만).",
+      "status": "not_started",
+      "verification": [
+        "docs/acceptance-criteria.md에 해당하는 로컬 단계 시나리오가 없으므로 수동으로 각 조작을 브라우저에서 실행해 확인한다."
+      ],
+      "evidence": [],
+      "notes": ""
+    },
+    {
+      "id": "rest-api",
+      "priority": 4,
+      "area": "apps/backend",
+      "title": "REST API 구현",
+      "user_visible_behavior": "클라이언트가 /api/generate-image, /api/upload를 호출해 이미지를 생성/업로드하고, /uploads/:filename으로 정적 서빙된 이미지를 받고, /health로 서버 상태를 확인할 수 있다.",
+      "status": "not_started",
+      "verification": [
+        "docs/api-spec.md 기준으로 각 엔드포인트에 대한 Supertest 통합 테스트를 작성한다.",
+        "API 키가 응답 바디/헤더 어디에도 노출되지 않음을 테스트로 확인한다."
+      ],
+      "evidence": [],
+      "notes": "docs/api-spec.md가 스텁 상태이므로, 엔드포인트별 요청/응답 스키마를 먼저 채워야 한다."
+    },
+    {
+      "id": "ws-protocol",
+      "priority": 5,
+      "area": "apps/backend",
+      "title": "커스텀 Yjs WebSocket 서버",
+      "user_visible_behavior": "여러 클라이언트가 같은 room에 WebSocket으로 연결해 Yjs 문서를 동기화할 수 있다 (Hocuspocus 미사용, ws + y-protocols 직접 구현).",
+      "status": "not_started",
+      "verification": [
+        "Vitest 통합 테스트: ws 라이브러리로 직접 연결한 가짜 Yjs 클라이언트 2개를 만들어 SyncStep1/2 핸드셰이크가 되는지 확인한다.",
+        "같은 테스트에서 한 클라이언트의 update가 다른 클라이언트로 중계되는지 확인한다.",
+        "브라우저 없이 서버만으로 검증 가능해야 한다."
+      ],
+      "evidence": [],
+      "notes": "docs/ws-protocol.md가 스텁 상태이므로, 메시지 타입/핸드셰이크 시퀀스를 먼저 정의해야 한다."
+    },
+    {
+      "id": "collab-canvas",
+      "priority": 6,
+      "area": "apps/frontend",
+      "title": "협업 캔버스 (Yjs 연동)",
+      "user_visible_behavior": "canvas-crud의 로컬 상태가 Yjs 공유 상태로 전환되어, 여러 사용자가 같은 room에서 실시간으로 캔버스를 함께 편집할 수 있다.",
+      "status": "not_started",
+      "verification": [
+        "docs/acceptance-criteria.md 시나리오 1~5를 순서대로 수동 실행해 확인한다."
+      ],
+      "evidence": [],
+      "notes": "docs/acceptance-criteria.md가 스텁 상태이므로, 시나리오 1~5를 먼저 구체적으로 작성해야 한다. ws-protocol, shared-types에 의존."
+    },
+    {
+      "id": "ai-image-generation",
+      "priority": 7,
+      "area": "apps/frontend + apps/backend",
+      "title": "AI 이미지 생성 플로우",
+      "user_visible_behavior": "사용자가 프롬프트를 입력하면 REST API를 통해 이미지가 생성되고, 그 결과가 캔버스 오브젝트로 추가된다.",
+      "status": "not_started",
+      "verification": [
+        "docs/acceptance-criteria.md 시나리오 6~8, 10~11을 순서대로 수동 실행해 확인한다."
+      ],
+      "evidence": [],
+      "notes": "docs/acceptance-criteria.md가 스텁 상태. rest-api feature에 의존."
+    },
+    {
+      "id": "node-graph",
+      "priority": 8,
+      "area": "apps/frontend",
+      "title": "생성 히스토리 노드 그래프",
+      "user_visible_behavior": "사용자가 React Flow로 생성 히스토리를 노드 그래프로 보고, 분기 시 새 엣지가 생성되며, 이 그래프는 Yjs로 동기화된다.",
+      "status": "not_started",
+      "verification": [
+        "docs/acceptance-criteria.md 시나리오 6~8을 순서대로 수동 실행해 확인한다."
+      ],
+      "evidence": [],
+      "notes": "docs/acceptance-criteria.md가 스텁 상태. collab-canvas, ai-image-generation에 의존."
+    },
+    {
+      "id": "preview-3d",
+      "priority": 9,
+      "area": "apps/frontend",
+      "title": "3D 프리뷰",
+      "user_visible_behavior": "완성된 캔버스 합성 결과가 CanvasTexture로 변환되어 3D 모델에 매핑되고, OrbitControls로 회전하며 확인할 수 있다.",
+      "status": "not_started",
+      "verification": [
+        "docs/acceptance-criteria.md 시나리오 9를 수동 실행해 확인한다."
+      ],
+      "evidence": [],
+      "notes": "docs/acceptance-criteria.md가 스텁 상태."
+    },
+    {
+      "id": "optimization-pass",
+      "priority": 10,
+      "area": "apps/frontend",
+      "title": "Three.js 최적화",
+      "user_visible_behavior": "3D 프리뷰가 최적화 적용 전보다 드로우콜/프레임 시간이 개선된 상태로 동작한다.",
+      "status": "not_started",
+      "verification": [
+        "docs/product-plan.md 9번 섹션의 최적화 체크리스트 중 적용한 항목을 기록한다.",
+        "최적화 전/후 드로우콜과 프레임 시간을 측정해 수치로 비교 기록한다."
+      ],
+      "evidence": [],
+      "notes": "docs/product-plan.md가 스텁 상태이므로, 9번 섹션(최적화 체크리스트)을 먼저 채워야 한다."
+    }
+  ]
+}
