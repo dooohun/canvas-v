@@ -1,5 +1,6 @@
 {
   "ui": "tui",
+  "globalEnv": ["PORT"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -10,14 +11,17 @@
       "persistent": true
     },
     "lint": {
-      "dependsOn": ["^lint"]
+      "dependsOn": ["^lint", "^build"]
     },
     "lint:fix": {
-      "dependsOn": ["^lint:fix"],
+      "dependsOn": ["^lint:fix", "^build"],
       "cache": false
     },
     "check-types": {
       "dependsOn": ["^check-types"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
     },
     "format": {
       "cache": false
