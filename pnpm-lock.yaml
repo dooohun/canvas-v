@@ -17,6 +17,9 @@ importers:
 
   apps/backend:
     dependencies:
+      '@repo/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       express:
         specifier: ^4.21.2
         version: 4.22.2
@@ -69,6 +72,9 @@ importers:
 
   apps/frontend:
     dependencies:
+      '@repo/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       react:
         specifier: ^19.0.0
         version: 19.2.7
@@ -167,6 +173,30 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.0
+      prettier:
+        specifier: ^3.4.2
+        version: 3.9.4
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/shared-types:
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/prettier-config':
+        specifier: workspace:*
+        version: link:../prettier-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      eslint:
+        specifier: ^9.17.0
+        version: 9.39.4(jiti@2.7.0)
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
       prettier:
         specifier: ^3.4.2
         version: 3.9.4

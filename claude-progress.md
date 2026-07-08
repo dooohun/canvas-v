@@ -6,13 +6,13 @@
 - Standard startup path: `./init.sh` (`pnpm install` → `pnpm turbo run build lint check-types test`).
   `pnpm turbo run dev`로 frontend(vite, :5173)와 backend(tsx watch, :3001)가 실제로 기동된다.
 - 표준 검증 경로: `pnpm turbo run build lint check-types test`
-- Current highest-priority unfinished feature: `shared-types` — `docs/data-model.md`가 채워져서
-  이제 바로 시작 가능 (packages/shared-types 패키지 스캐폴딩부터)
+- Current highest-priority unfinished feature: `canvas-crud` (priority 3) — 문서 의존성 없음,
+  바로 시작 가능. `ws-protocol`(priority 5)도 문서가 준비돼 있어 시작 가능하지만 priority 순서상
+  `canvas-crud`가 먼저다.
 - Current blocker: `docs/api-spec.md`, `docs/acceptance-criteria.md`가 여전히 스텁 상태
   (`docs/product-plan.md`, `docs/data-model.md`, `docs/ws-protocol.md`는 채워짐). `rest-api`,
   그리고 `collab-canvas`/`ai-image-generation`/`node-graph`/`preview-3d`(acceptance-criteria
-  시나리오 참조)를 시작하려면 해당 문서를 먼저 채워야 한다. `ws-protocol`은 문서가 준비됐으니
-  바로 시작 가능(다만 `shared-types`가 priority 순서상 먼저).
+  시나리오 참조)를 시작하려면 해당 문서를 먼저 채워야 한다.
 
 ## Session Log
 
@@ -154,7 +154,7 @@
   정의, `docs/architecture.md`의 room/relay 규칙, `docs/acceptance-criteria.md`의 재접속
   시나리오(4번)와 내용이 어긋나지 않는지 교차 확인함.
 - Evidence captured: 해당 없음(문서만 변경, 코드 변경 없음).
-- Commits: 세션 종료 시점에 커밋 예정.
+- Commits: `7162dd2`.
 - Files or artifacts updated: `docs/ws-protocol.md`, `CLAUDE.md`, `feature_list.json`,
   `claude-progress.md`.
 - Known risk or unresolved issue:
@@ -163,3 +163,43 @@
     `ws-protocol`보다 먼저다.
 - Next best step: priority 순서대로면 `shared-types` feature(패키지 스캐폴딩 + 타입 작성)가
   다음. `ws-protocol` 구현은 그 다음 순서지만 문서는 이미 준비돼 있어 언제 시작해도 막히지 않는다.
+
+### Session 005
+
+- Date: 2026-07-08
+- Goal: `shared-types` feature 구현 — `packages/shared-types` 스캐폴딩 후 `docs/data-model.md`
+  6번 섹션의 타입을 작성하고 frontend/backend 양쪽에서 실제로 import해 검증한다.
+- Completed:
+  - `packages/shared-types` 생성: `package.json`(다른 config 패키지와 동일한 tsc build →
+    dist 패턴), `tsconfig.json`(`@repo/typescript-config/base.json` 확장 — node 전용이 아니라
+    frontend/backend 양쪽에서 쓰이므로), `eslint.config.ts`(`@repo/eslint-config/base` 사용).
+  - `src/canvas-object.ts`(`CanvasObject`), `src/node-graph.ts`(`GraphNode`, `NodeStatus`,
+    `GraphEdge`), `src/awareness.ts`(`AwarenessState`), `src/ws-message.ts`(`WS_MESSAGE_TYPE`,
+    `WsMessageType`), `src/index.ts`(재export) — `docs/data-model.md`에 정의된 필드 그대로.
+  - `apps/frontend`, `apps/backend`의 `package.json`에 `@repo/shared-types: workspace:*`를
+    `dependencies`에 추가(타입 전용이 아니라 `WS_MESSAGE_TYPE`이 런타임 값이라 `devDependencies`가
+    아님).
+  - 각 앱에 `src/__tests__/shared-types.test.ts` 추가: 실제로 타입 값을 만들고
+    `WS_MESSAGE_TYPE`을 assert하는 테스트로 "import 가능 + tsc 에러 없음" 검증을 단순 import가
+    아니라 실행 가능한 증거로 남김.
+  - **버그 발견 및 수정**: `packages/shared-types`에 `.prettierignore`가 없어서 `dist/`가
+    `format:check`에 걸리는 문제 — frontend/backend에서 이미 겪었던 것과 같은 종류의 버그.
+    `.prettierignore`(`dist`) 추가로 수정. (다음에 패키지를 새로 만들 때 잊지 말 것.)
+- Verification run: fresh 상태(`dist`/`.turbo` 전부 삭제) `./init.sh` 실행 → `pnpm install` 성공,
+  `pnpm turbo run build lint check-types test` 15/15 태스크 성공(패키지 6개 + 앱 2개). turbo
+  로그에서 `@repo/shared-types:build`가 `frontend:build`/`backend:build`보다 먼저 실행되는 것도
+  확인(의존 그래프가 제대로 잡힘).
+- Evidence captured: 위 `./init.sh` 터미널 출력, `feature_list.json`의 `shared-types.evidence`에
+  기록.
+- Commits: 세션 종료 시점에 커밋 예정.
+- Files or artifacts updated: `packages/shared-types/*`(신규), `apps/frontend/package.json`,
+  `apps/frontend/src/__tests__/shared-types.test.ts`(신규), `apps/backend/package.json`,
+  `apps/backend/src/__tests__/shared-types.test.ts`(신규), `feature_list.json`,
+  `claude-progress.md`.
+- Known risk or unresolved issue:
+  - `docs/api-spec.md`, `docs/acceptance-criteria.md`는 여전히 스텁.
+  - `packages/shared-types`의 타입은 아직 실제 앱 코드(캔버스/노드그래프 상태)에서 쓰이지 않고
+    테스트에서만 쓰인다 — `canvas-crud`, `ws-protocol` 등 후속 feature에서 실제로 소비됨.
+- Next best step: priority 순서상 다음은 `canvas-crud`(문서 의존성 없음, 바로 시작 가능) —
+  캔버스 오브젝트 로컬 CRUD를 `CanvasObject` 타입으로 구현. `ws-protocol` 구현도 언제든 시작
+  가능하지만 priority가 더 낮다.
