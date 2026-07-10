@@ -1,6 +1,6 @@
 {
   "project": "canvas-v",
-  "last_updated": "2026-07-07",
+  "last_updated": "2026-07-09",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -32,53 +32,60 @@
         "2026-07-07: apps/frontend는 vite+react-dom 추가, vite build/vitest(jsdom)+@testing-library/react로 App 렌더 테스트 1개 통과. apps/backend는 express+ws 추가, vitest(node)+supertest로 GET /health 테스트 1개 통과.",
         "2026-07-07: pnpm turbo run dev로 frontend(vite, :5173)와 backend(tsx watch, :3001) 둘 다 실제로 기동되는 것을 확인 (curl로 backend /health 200 응답 확인)."
       ],
-      "notes": "packages/eslint-config, packages/prettier-config, packages/typescript-config와 turbo build/lint/check-types/format 태스크는 이미 구성되어 통과 중이었음. 이번에 추가한 것: apps/frontend에 vite+react-dom+dev/build/preview 스크립트, apps/backend에 express+ws+dev 스크립트(+ /health 헬스체크 엔드포인트, ws 서버는 connection만 수락하고 room/relay 로직은 아직 없음 — ws-protocol feature 범위), turbo.json에 test 태스크 추가(lint/lint:fix도 ^build에 의존하도록 수정 — dist 없이 eslint.config.ts가 깨지는 버그 발견 후 수정), Vitest(frontend: jsdom, backend: node) + backend는 supertest 병행. packages/shared-types 생성은 별도 feature(shared-types)로 분리되어 이 feature의 범위 밖(그대로 유지)."
+      "notes": "packages/eslint-config, packages/prettier-config, packages/typescript-config와 turbo build/lint/check-types/format 태스크는 이미 구성되어 통과 중이었음. 이번에 추가한 것: apps/frontend에 vite+react-dom+dev/build/preview 스크립트, apps/backend에 express+ws+dev 스크립트(+ /health 헬스체크 엔드포인트, ws 서버는 connection만 수락하고 room/relay 로직은 아직 없음 — ws-protocol feature 범위), turbo.json에 test 태스크 추가(lint/lint:fix도 ^build에 의존하도록 수정 — dist 없이 eslint.config.ts가 깨지는 버그 발견 후 수정), Vitest(frontend: jsdom, backend: node) + backend는 supertest 병행. 이 feature는 화면 구성 변경(2026-07-09)과 무관한 순수 인프라라 영향받지 않음."
     },
     {
       "id": "shared-types",
       "priority": 2,
       "area": "packages/shared-types",
-      "title": "공유 타입 패키지",
-      "user_visible_behavior": "frontend와 backend가 노드/엣지/캔버스 오브젝트/WS 메시지 타입을 하나의 소스에서 import해서 쓴다.",
+      "title": "공유 타입 패키지 (노드 파이프라인 스키마로 재구현)",
+      "user_visible_behavior": "frontend와 backend가 파이프라인 노드/엣지/WS 메시지 타입을 하나의 소스에서 import해서 쓴다.",
       "status": "passing",
       "verification": [
-        "docs/data-model.md에 정의된 스키마가 packages/shared-types의 TypeScript 타입으로 존재한다.",
+        "docs/data-model.md 1~5번 섹션에 정의된 스키마가 packages/shared-types의 TypeScript 타입으로 존재한다 (NodeType, NodeStatus, TextPromptNode/GenerateImageNode/Generate3dNode, PipelineNode 판별 유니언, PortDataType, NODE_PORTS, PipelineEdge, AwarenessState, WS_MESSAGE_TYPE/WsMessageType).",
         "apps/frontend에서 @repo/shared-types를 import했을 때 tsc 에러가 없다.",
-        "apps/backend에서 @repo/shared-types를 import했을 때 tsc 에러가 없다."
+        "apps/backend에서 @repo/shared-types를 import했을 때 tsc 에러가 없다.",
+        "NODE_PORTS 조회만으로 두 노드 타입 간 엣지가 유효한지(text-to-text, image-to-image) 판단할 수 있는지 유닛 테스트로 확인한다."
       ],
       "evidence": [
-        "2026-07-08: packages/shared-types 생성 (CanvasObject, GraphNode/NodeStatus/GraphEdge, AwarenessState, WS_MESSAGE_TYPE/WsMessageType — docs/data-model.md 6번 섹션 이름 그대로). tsc build로 dist/ 컴파일, turbo build 그래프에 자동 편입됨(apps보다 먼저 빌드되는 것 확인).",
-        "2026-07-08: apps/frontend, apps/backend 각각 src/__tests__/shared-types.test.ts에서 @repo/shared-types의 타입 값을 실제로 만들고 WS_MESSAGE_TYPE을 assert하는 테스트 작성, 둘 다 통과 (frontend/backend 각 2 테스트로 늘어남).",
-        "2026-07-08: fresh 상태(dist/.turbo 전부 삭제)에서 ./init.sh 실행 → 15/15 태스크 성공 (build/lint/check-types/test 전체, packages 6개+apps 2개)."
+        "2026-07-08: (옛 스키마, 폐기됨) packages/shared-types를 CanvasObject/GraphNode/GraphEdge/AwarenessState/WS_MESSAGE_TYPE으로 처음 구현했었음. 2026-07-09 docs/data-model.md가 노드 파이프라인 구조로 전면 재작성되면서 이 구현은 스키마가 완전히 달라져 무효화됨.",
+        "2026-07-09: docs/data-model.md 6번 섹션 이름 그대로 재구현 완료 — src/node.ts(NodeType, NodeStatus, TextPromptNode/GenerateImageNode/Generate3dNode, PipelineNode 판별 유니언), src/ports.ts(PortDataType, NODE_PORTS, canConnect 헬퍼), src/edge.ts(PipelineEdge), src/awareness.ts(AwarenessState, selectedNodeId로 필드명 변경), src/ws-message.ts(WS_MESSAGE_TYPE — 유일하게 안 바뀐 부분, 그대로 재사용).",
+        "2026-07-09: apps/frontend, apps/backend 각각 src/__tests__/shared-types.test.ts를 새 타입으로 재작성. 타입 값 생성 테스트에 더해 canConnect('textPrompt','generateImage')===true, canConnect('textPrompt','generate3d')===false 같은 포트 호환성 테스트를 추가해 NODE_PORTS만으로 연결 유효성을 판단할 수 있음을 확인 (frontend/backend 각 2개 테스트, 총 3개 테스트 파일).",
+        "2026-07-09: fresh 상태(dist/.turbo 전부 삭제)에서 ./init.sh 실행 → 15/15 태스크 성공. pnpm turbo run format으로 신규 파일 포맷 정리 후 format:check도 통과."
       ],
-      "notes": "packages/shared-types에 lint/format 스크립트도 apps와 동일 패턴으로 추가(eslint-config/prettier-config 자체는 tooling 패키지라 lint/format 스크립트가 없는 것과 다름 — shared-types는 실제 도메인 코드라 apps 패턴을 따름). dist/에 .prettierignore 누락되어 format:check가 dist를 검사하던 버그 발견 후 수정(이전에 frontend/backend에서 겪은 것과 동일한 종류의 버그 — 새 패키지 만들 때마다 체크할 것)."
+      "notes": "canConnect(sourceType, targetType)는 data-model.md엔 없던 헬퍼 함수를 추가로 만든 것 — NODE_PORTS를 pipeline-canvas 등 여러 feature에서 반복해서 비교하지 않도록 단일 지점에 뒀다. resultUrl 필드명은 docs/architecture.md '열린 질문'(Generate 3D 노드의 실제 동작)이 확정되면 더 구체적인 이름으로 바뀔 수 있음 — 그때 이 패키지도 같이 갱신 필요. 서버 코드(src/app.ts, src/ws-server.ts)는 여전히 이 패키지의 타입을 쓰지 않음(테스트 파일만 import) — docs/architecture.md 규칙 유지 확인."
     },
     {
-      "id": "canvas-crud",
+      "id": "pipeline-canvas",
       "priority": 3,
       "area": "apps/frontend",
-      "title": "캔버스 오브젝트 로컬 CRUD",
-      "user_visible_behavior": "사용자가 캔버스에서 오브젝트를 추가/이동/크기조절/회전/삭제/순서변경할 수 있다 (협업 없이 로컬 상태만).",
+      "title": "노드 파이프라인 캔버스 로컬 CRUD (React Flow)",
+      "user_visible_behavior": "사용자가 캔버스에 Text Prompt/Generate Image/Generate 3D 노드를 추가·이동·삭제하고, 포트 타입이 맞는 노드끼리(text-to-text, image-to-image) 엣지로 연결·해제할 수 있다 (협업 없이 로컬 상태만).",
       "status": "not_started",
       "verification": [
-        "docs/acceptance-criteria.md에 해당하는 로컬 단계 시나리오가 없으므로 수동으로 각 조작을 브라우저에서 실행해 확인한다."
+        "docs/acceptance-criteria.md에 해당하는 로컬 단계 시나리오가 없으므로, 자동화 가능한 부분(노드/엣지 상태 로직, 연결 유효성 검사, 클릭 기반 상호작용)은 유닛/컴포넌트 테스트로 확인하고, 실제 드래그 배치는 브라우저에서 수동으로 확인한다.",
+        "docs/data-model.md 2번 섹션의 연결 규칙을 위반하는 엣지(예: text 출력 → image 입력)는 생성되지 않음을 테스트로 확인한다.",
+        "노드를 삭제하면 그 노드에 연결된 엣지도 함께 삭제됨을 테스트로 확인한다(고아 엣지 방지, docs/data-model.md 3번 섹션)."
       ],
-      "evidence": [],
-      "notes": ""
+      "evidence": [
+        "2026-07-08: (되돌림, 옛 정의) 자유배치 이미지 캔버스로 canvasStore.ts/CanvasEditor.tsx를 구현하고 자동 테스트 11개까지 통과시켰으나, 2026-07-09 제품 방향 변경(자유배치 캔버스 → 노드 파이프라인)으로 코드 전체를 삭제함. add/move/remove의 '개념'과 선택 시 컨트롤을 보여주는 UI 패턴은 재사용 가능하다고 판단됨 — 회전과 자유 좌표/크기조절 모델(x/y/width/height 임의 리사이즈)은 노드 그래프에 맞지 않아 폐기.",
+        "2026-07-08: @testing-library/react의 자동 cleanup이 vitest globals 미사용 환경에서 등록되지 않는 버그를 발견해 apps/frontend/vitest.setup.ts에 afterEach(cleanup)을 추가한 수정은 유지됨(이 feature와 무관한 일반 테스트 인프라)."
+      ],
+      "notes": "옛 canvas-crud(자유배치 이미지 캔버스)와 옛 node-graph(생성 히스토리 전용 React Flow 그래프)를 하나로 합친 feature다 — 새 기획에서는 캔버스 자체가 곧 노드 그래프라 둘을 나눌 이유가 없다. 회전은 필요 없음(사용자가 명시). 엣지 연결 유효성 검사는 shared-types의 NODE_PORTS만 보고 판단하도록 구현할 것(도메인 규칙을 이 feature 안에 다시 하드코딩하지 않음). shared-types feature(NodeType/PipelineNode/PortDataType/NODE_PORTS)가 선행 조건."
     },
     {
       "id": "rest-api",
       "priority": 4,
       "area": "apps/backend",
       "title": "REST API 구현",
-      "user_visible_behavior": "클라이언트가 /api/generate-image, /api/upload를 호출해 이미지를 생성/업로드하고, /uploads/:filename으로 정적 서빙된 이미지를 받고, /health로 서버 상태를 확인할 수 있다.",
+      "user_visible_behavior": "Generate Image 노드가 실행되면 클라이언트가 /api/generate-image를 호출해 이미지를 생성하고, /api/upload로 이미지를 업로드하고, /uploads/:filename으로 정적 서빙된 이미지를 받고, /health로 서버 상태를 확인할 수 있다.",
       "status": "not_started",
       "verification": [
         "docs/api-spec.md 기준으로 각 엔드포인트에 대한 Supertest 통합 테스트를 작성한다.",
         "API 키가 응답 바디/헤더 어디에도 노출되지 않음을 테스트로 확인한다."
       ],
       "evidence": [],
-      "notes": "docs/api-spec.md가 스텁 상태이므로, 엔드포인트별 요청/응답 스키마를 먼저 채워야 한다. monorepo-setup에서 apps/backend/src/app.ts에 GET /health가 이미 스캐폴딩되어 supertest 테스트 1개가 존재함 — 이 feature에서는 나머지 3개 엔드포인트(/api/generate-image, /api/upload, /uploads/:filename)를 추가하고, /health를 API 키 비노출 검증에도 포함시킨다."
+      "notes": "docs/api-spec.md가 스텁 상태이므로, 엔드포인트별 요청/응답 스키마를 먼저 채워야 한다. monorepo-setup에서 apps/backend/src/app.ts에 GET /health가 이미 스캐폴딩되어 supertest 테스트 1개가 존재함 — 이 feature에서는 나머지 3개 엔드포인트(/api/generate-image, /api/upload, /uploads/:filename)를 추가하고, /health를 API 키 비노출 검증에도 포함시킨다. Generate 3D 노드용 엔드포인트가 필요한지는 docs/architecture.md의 '열린 질문'으로 미정 — 확정 전까지 이 feature 범위에 넣지 않는다."
     },
     {
       "id": "ws-protocol",
@@ -94,73 +101,60 @@
         "docs/ws-protocol.md 5번 섹션의 재접속 시나리오(room에 다른 클라이언트가 남아있을 때 재연결하면 핸드셰이크만으로 전체 상태가 복원됨)도 같은 테스트 스위트에서 확인한다."
       ],
       "evidence": [],
-      "notes": "docs/ws-protocol.md 작성 완료 (2026-07-07): envelope 구조(WS_MESSAGE_TYPE + y-protocols/sync 서브타입), 양방향 SyncStep1/2 핸드셰이크 시퀀스, 중계 규칙(SyncStep1/2는 1:1 응답, Update/Awareness만 브로드캐스트), room 생명주기(lazy 생성, 마지막 클라이언트 퇴장 시 정리), 필요 의존성(yjs, y-protocols, lib0 — 아직 apps/backend에 추가 안 됨) 전부 정의됨. 구현 시작 시 이 의존성부터 추가할 것."
+      "notes": "docs/ws-protocol.md 작성 완료: envelope 구조(WS_MESSAGE_TYPE + y-protocols/sync 서브타입), 양방향 SyncStep1/2 핸드셰이크 시퀀스, 중계 규칙(SyncStep1/2는 1:1 응답, Update/Awareness만 브로드캐스트), room 생명주기(lazy 생성, 마지막 클라이언트 퇴장 시 정리), 필요 의존성(yjs, y-protocols, lib0 — 아직 apps/backend에 추가 안 됨) 전부 정의됨. 2026-07-09 화면 구성 변경(노드 파이프라인)의 영향을 받지 않는 전송 계층이라 이 문서/feature는 그대로 유효하다. 서버 코드에 PipelineNode/NodeType 같은 도메인 타입이 등장하면 안 된다(docs/ws-protocol.md 0번 섹션)."
     },
     {
       "id": "collab-canvas",
       "priority": 6,
       "area": "apps/frontend",
-      "title": "협업 캔버스 (Yjs 연동)",
-      "user_visible_behavior": "canvas-crud의 로컬 상태가 Yjs 공유 상태로 전환되어, 여러 사용자가 같은 room에서 실시간으로 캔버스를 함께 편집할 수 있다.",
+      "title": "협업 파이프라인 캔버스 (Yjs 연동)",
+      "user_visible_behavior": "pipeline-canvas의 로컬 노드/엣지 상태가 Yjs 공유 상태로 전환되어, 여러 사용자가 같은 room에서 실시간으로 같은 파이프라인을 함께 편집할 수 있다.",
       "status": "not_started",
       "verification": [
-        "docs/acceptance-criteria.md 시나리오 1~5를 순서대로 수동 실행해 확인한다."
+        "docs/acceptance-criteria.md의 협업 시나리오(재작성 필요, 옛 시나리오 1~5에 대응)를 순서대로 수동 실행해 확인한다."
       ],
       "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태이므로, 시나리오 1~5를 먼저 구체적으로 작성해야 한다. ws-protocol에 의존 (shared-types는 완료됨)."
+      "notes": "docs/acceptance-criteria.md가 스텁 상태이므로, 새 노드 파이프라인 기준으로 협업 시나리오를 먼저 구체적으로 작성해야 한다. pipeline-canvas, ws-protocol, shared-types(재구현)에 의존."
     },
     {
       "id": "ai-image-generation",
       "priority": 7,
       "area": "apps/frontend + apps/backend",
-      "title": "AI 이미지 생성 플로우",
-      "user_visible_behavior": "사용자가 프롬프트를 입력하면 REST API를 통해 이미지가 생성되고, 그 결과가 캔버스 오브젝트로 추가된다.",
+      "title": "Generate Image 노드 실행 플로우",
+      "user_visible_behavior": "사용자가 Text Prompt 노드를 Generate Image 노드에 연결하고 실행하면, REST API를 통해 이미지가 생성되고 그 결과가 Generate Image 노드에 반영된다(status: pending → ready/error).",
       "status": "not_started",
       "verification": [
-        "docs/acceptance-criteria.md 시나리오 6~8, 10~11을 순서대로 수동 실행해 확인한다."
+        "docs/acceptance-criteria.md의 생성 시나리오(재작성 필요, 옛 시나리오 6~8·10~11에 대응)를 순서대로 수동 실행해 확인한다."
       ],
       "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태. rest-api feature에 의존."
+      "notes": "docs/acceptance-criteria.md가 스텁 상태. rest-api, pipeline-canvas에 의존. 여러 Text Prompt 노드가 fan-in으로 연결됐을 때 프롬프트를 어떻게 합치는지는 docs/architecture.md '열린 질문'으로 미정 — 이 feature 구현 시 확정 필요."
     },
     {
-      "id": "node-graph",
+      "id": "generate-3d-preview",
       "priority": 8,
       "area": "apps/frontend",
-      "title": "생성 히스토리 노드 그래프",
-      "user_visible_behavior": "사용자가 React Flow로 생성 히스토리를 노드 그래프로 보고, 분기 시 새 엣지가 생성되며, 이 그래프는 Yjs로 동기화된다.",
+      "title": "Generate 3D 노드 렌더링",
+      "user_visible_behavior": "Generate 3D 노드에 이미지가 연결되고 실행되면, 노드 내부(또는 확대 뷰)에서 Three.js로 결과가 렌더링되고 OrbitControls로 회전하며 확인할 수 있다.",
       "status": "not_started",
       "verification": [
-        "docs/acceptance-criteria.md 시나리오 6~8을 순서대로 수동 실행해 확인한다."
+        "docs/acceptance-criteria.md의 3D 시나리오(재작성 필요, 옛 시나리오 9에 대응)를 수동 실행해 확인한다."
       ],
       "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태. collab-canvas, ai-image-generation에 의존."
-    },
-    {
-      "id": "preview-3d",
-      "priority": 9,
-      "area": "apps/frontend",
-      "title": "3D 프리뷰",
-      "user_visible_behavior": "완성된 캔버스 합성 결과가 CanvasTexture로 변환되어 3D 모델에 매핑되고, OrbitControls로 회전하며 확인할 수 있다.",
-      "status": "not_started",
-      "verification": [
-        "docs/acceptance-criteria.md 시나리오 9를 수동 실행해 확인한다."
-      ],
-      "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태."
+      "notes": "옛 feature id는 preview-3d(별도 3D 프리뷰 탭)였으나, 2026-07-09 화면 구성 변경으로 Generate 3D 노드 안에서 렌더링하는 것으로 범위가 바뀌어 id/제목을 변경함. docs/architecture.md '열린 질문'(이미지를 고정된 3D 모델에 텍스처로 매핑하는 것인지, 별도 image-to-3D 생성 API를 쓰는 것인지)이 이 feature를 시작하기 전에 확정돼야 한다 — 확정에 따라 rest-api feature의 범위도 달라질 수 있다."
     },
     {
       "id": "optimization-pass",
-      "priority": 10,
+      "priority": 9,
       "area": "apps/frontend",
       "title": "Three.js 최적화",
-      "user_visible_behavior": "3D 프리뷰가 최적화 적용 전보다 드로우콜/프레임 시간이 개선된 상태로 동작한다.",
+      "user_visible_behavior": "Generate 3D 노드 렌더링이 최적화 적용 전보다 드로우콜/프레임 시간이 개선된 상태로 동작한다.",
       "status": "not_started",
       "verification": [
         "docs/product-plan.md 6번 섹션(Three.js 최적화 체크리스트)의 항목 중 적용한 것을 기록한다.",
         "최적화 전/후 드로우콜과 프레임 시간을 측정해 수치로 비교 기록한다."
       ],
       "evidence": [],
-      "notes": "docs/product-plan.md 6번 섹션에 우선순위가 매겨진 체크리스트가 이미 작성되어 있다 (텍스처 재사용, 지오메트리/머티리얼 공유, 리렌더 방지, 픽셀 비율 상한, 프레임 측정). 최소 1~2번만 적용해도 벤치마크 비교가 가능하다고 명시되어 있음."
+      "notes": "docs/product-plan.md 6번 섹션에 우선순위가 매겨진 체크리스트가 이미 작성되어 있다 (텍스처 재사용, 지오메트리/머티리얼 공유, 리렌더 방지, 픽셀 비율 상한, 프레임 측정). 최소 1~2번만 적용해도 벤치마크 비교가 가능하다고 명시되어 있음. generate-3d-preview feature에 의존(그 안의 렌더링을 최적화하는 것이므로)."
     }
   ]
 }

@@ -7,5 +7,5 @@ export interface AwarenessState {
   name: string;
   color: string;
   cursor: { x: number; y: number } | null;
-  selectedObjectId: string | null;
+  selectedNodeId: string | null;
 }
