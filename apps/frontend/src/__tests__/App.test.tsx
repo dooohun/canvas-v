@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { App } from '../App';
 
 describe('App', () => {
-  it('renders', () => {
+  it('renders the pipeline canvas with its add-node toolbar', () => {
     render(<App />);
 
-    expect(screen.getByText('canvas-v')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /text node/i })).toBeInTheDocument();
   });
 });

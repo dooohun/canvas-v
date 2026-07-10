@@ -1,3 +1,5 @@
+import { PipelineCanvas } from '@/components/pipeline/PipelineCanvas';
+
 export function App() {
-  return <div>canvas-v</div>;
+  return <PipelineCanvas />;
 }
