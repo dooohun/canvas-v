@@ -12,7 +12,7 @@ describe('@repo/shared-types', () => {
       type: 'generate3d',
       position: { x: 400, y: 0 },
       status: 'pending',
-      resultUrl: null,
+      modelUrl: null,
       errorMessage: null,
     };
     const edge: PipelineEdge = {

@@ -37,18 +37,18 @@ TypeScript 타입으로 선언하고, frontend와 backend가 각각 import해서
    - AI 이미지 생성 프록시: Generate Image 노드 실행 시 클라이언트 요청을 받아 서버가 API
      키로 외부 이미지 생성 API 호출, 결과 URL만 응답
    - 이미지 업로드/정적 서빙: 생성된 이미지를 파일로 저장하고 URL 발급
-   - Generate 3D 노드 실행이 서버 API 호출을 수반하는지는 아직 미정 — 아래 "열린 질문" 참고
+   - AI 3D 생성 프록시: Generate 3D 노드 실행 시 클라이언트 요청을 받아 서버가 API 키로
+     Meshy AI(image-to-3D)를 호출, 결과 3D 에셋 URL만 응답
 
 ## 데이터 흐름
 
 ```
-[클라이언트 A] --Generate Image 노드 실행--> [REST: AI 프록시] --호출--> [외부 이미지 생성 API]
+[클라이언트 A] --Generate Image 노드 실행--> [REST: AI 이미지 프록시] --호출--> [OpenAI Images API]
 [클라이언트 A] <--이미지 URL---
+[클라이언트 A] --Generate 3D 노드 실행--> [REST: AI 3D 프록시] --호출--> [Meshy AI]
+[클라이언트 A] <--3D 에셋 URL---
 [클라이언트 A] --Yjs 업데이트(노드/엣지 변경)--> [WS 서버] --중계--> [클라이언트 B, C, ...]
 ```
-
-Generate 3D 노드 실행이 REST API를 타는지, 아니면 클라이언트에서 이미지를 고정된 3D 모델에
-텍스처로 매핑하는 것으로 끝나는지에 따라 위 흐름에 한 줄이 더 필요할 수 있다 (열린 질문 참고).
 
 ## Hocuspocus를 쓰지 않는 이유
 
@@ -65,15 +65,19 @@ Hocuspocus는 Yjs WebSocket 백엔드를 대신 구현해주는 프레임워크�
 - 서버 재시작 시 메모리 상의 Y.Doc은 사라짐 (영속성은 확장 과제, `docs/acceptance-criteria.md`의
   범위 밖)
 
+## 외부 AI API
+
+- **이미지 생성**: OpenAI Images API. 서버가 API 키로 호출하고 이미지 URL만 클라이언트에 응답.
+- **3D 생성**: Meshy AI(image-to-3D). 서버가 API 키로 호출하고 3D 에셋 URL만 클라이언트에 응답.
+  (2026-07-10 결정 — 클라이언트 전용 텍스처 매핑 방식은 채택하지 않음.)
+
+두 API 키 모두 서버 환경변수로만 관리하고 클라이언트로 전달하지 않는다 (`CLAUDE.md` 절대 규칙).
+요청/응답 스키마, 인증 방식, 에러 케이스는 `docs/api-spec.md`에 정의한다.
+
 ## 열린 질문
 
 이번 화면 구성 변경(3패널 → 단일 노드 캔버스)으로 새로 생긴, 아직 결정되지 않은 것들이다.
-구현을 시작하기 전에 `docs/api-spec.md`/`docs/product-plan.md`에서 확정해야 한다.
 
-- **Generate 3D 노드의 실제 동작**: (a) 이미지를 고정된 3D 모델에 텍스처로 매핑하는
-  클라이언트 전용 렌더링인지, (b) 별도의 image-to-3D 생성 API를 서버가 대신 호출하는
-  것인지. `docs/data-model.md`는 두 경우 모두 수용 가능하도록 `resultUrl` 필드명을 중립적으로
-  뒀지만, 실제 동작은 `docs/api-spec.md`를 쓸 때 확정해야 한다.
 - **여러 입력을 어떻게 조합하는지**: `docs/data-model.md`는 한 입력 포트에 여러 엣지가 들어오는
   것(fan-in)을 허용하기로 확정했지만(예: Generate Image 노드가 여러 Text Prompt 노드를 입력받는
   경우), 그 값들을 실제로 어떻게 합치는지(텍스트 이어붙이기 규칙, 이미지 여러 장을 3D 노드가

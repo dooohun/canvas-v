@@ -1,6 +1,6 @@
 {
   "project": "canvas-v",
-  "last_updated": "2026-07-10",
+  "last_updated": "2026-07-27",
   "rules": {
     "single_active_feature": true,
     "passing_requires_evidence": true,
@@ -53,7 +53,7 @@
         "2026-07-09: apps/frontend, apps/backend 각각 src/__tests__/shared-types.test.ts를 새 타입으로 재작성. 타입 값 생성 테스트에 더해 canConnect('textPrompt','generateImage')===true, canConnect('textPrompt','generate3d')===false 같은 포트 호환성 테스트를 추가해 NODE_PORTS만으로 연결 유효성을 판단할 수 있음을 확인 (frontend/backend 각 2개 테스트, 총 3개 테스트 파일).",
         "2026-07-09: fresh 상태(dist/.turbo 전부 삭제)에서 ./init.sh 실행 → 15/15 태스크 성공. pnpm turbo run format으로 신규 파일 포맷 정리 후 format:check도 통과."
       ],
-      "notes": "canConnect(sourceType, targetType)는 data-model.md엔 없던 헬퍼 함수를 추가로 만든 것 — NODE_PORTS를 pipeline-canvas 등 여러 feature에서 반복해서 비교하지 않도록 단일 지점에 뒀다. resultUrl 필드명은 docs/architecture.md '열린 질문'(Generate 3D 노드의 실제 동작)이 확정되면 더 구체적인 이름으로 바뀔 수 있음 — 그때 이 패키지도 같이 갱신 필요. 서버 코드(src/app.ts, src/ws-server.ts)는 여전히 이 패키지의 타입을 쓰지 않음(테스트 파일만 import) — docs/architecture.md 규칙 유지 확인."
+      "notes": "canConnect(sourceType, targetType)는 data-model.md엔 없던 헬퍼 함수를 추가로 만든 것 — NODE_PORTS를 pipeline-canvas 등 여러 feature에서 반복해서 비교하지 않도록 단일 지점에 뒀다. Generate3dNode의 필드명은 2026-07-10 Generate 3D 노드 동작이 확정(서버가 Meshy AI 호출)됨에 따라 resultUrl → modelUrl로 이름을 바꿨다(rest-api feature 착수 전 정리). 서버 코드(src/app.ts, src/ws-server.ts)는 여전히 이 패키지의 타입을 쓰지 않음(테스트 파일만 import) — docs/architecture.md 규칙 유지 확인."
     },
     {
       "id": "pipeline-canvas",
@@ -85,14 +85,20 @@
       "priority": 4,
       "area": "apps/backend",
       "title": "REST API 구현",
-      "user_visible_behavior": "Generate Image 노드가 실행되면 클라이언트가 /api/generate-image를 호출해 이미지를 생성하고, /api/upload로 이미지를 업로드하고, /uploads/:filename으로 정적 서빙된 이미지를 받고, /health로 서버 상태를 확인할 수 있다.",
-      "status": "not_started",
+      "user_visible_behavior": "Generate Image 노드가 실행되면 클라이언트가 /api/generate-image를 호출해 OpenAI Images API로 이미지를 생성하고, Generate 3D 노드가 실행되면 /api/generate-3d를 호출해 Meshy AI로 3D 에셋을 생성하고, /api/upload로 파일을 업로드하고, /uploads/:filename으로 정적 서빙된 파일을 받고, /health로 서버 상태를 확인할 수 있다.",
+      "status": "passing",
       "verification": [
-        "docs/api-spec.md 기준으로 각 엔드포인트에 대한 Supertest 통합 테스트를 작성한다.",
-        "API 키가 응답 바디/헤더 어디에도 노출되지 않음을 테스트로 확인한다."
+        "docs/api-spec.md 기준으로 각 엔드포인트(POST /api/generate-image, POST /api/generate-3d, POST /api/upload, GET /uploads/:filename, GET /health)에 대한 Supertest 통합 테스트를 작성한다.",
+        "API 키(OPENAI_API_KEY, MESHY_API_KEY)가 응답 바디/헤더 어디에도 노출되지 않음을 테스트로 확인한다.",
+        "docs/api-spec.md에 정의된 에러 케이스(필수 필드 누락, 외부 API 실패, rate limit, 존재하지 않는 파일, 경로 순회 문자)가 명시된 status code로 응답하는지 테스트로 확인한다."
       ],
-      "evidence": [],
-      "notes": "docs/api-spec.md가 스텁 상태이므로, 엔드포인트별 요청/응답 스키마를 먼저 채워야 한다. monorepo-setup에서 apps/backend/src/app.ts에 GET /health가 이미 스캐폴딩되어 supertest 테스트 1개가 존재함 — 이 feature에서는 나머지 3개 엔드포인트(/api/generate-image, /api/upload, /uploads/:filename)를 추가하고, /health를 API 키 비노출 검증에도 포함시킨다. Generate 3D 노드용 엔드포인트가 필요한지는 docs/architecture.md의 '열린 질문'으로 미정 — 확정 전까지 이 feature 범위에 넣지 않는다."
+      "evidence": [
+        "2026-07-10: apps/backend/src/lib/{storage,externalApiError,openaiClient,meshyClient}.ts와 src/routes/{generateImage,generate3d,upload,uploads}.ts 구현. multer(메모리 스토리지, 10MB 제한, MIME 허용목록)로 업로드 처리, 생성 결과(OpenAI/Meshy)는 storage.saveBuffer로 저장 후 /uploads/:filename 상대 URL만 응답. 외부 API는 Node 22 내장 fetch로 호출(추가 HTTP 클라이언트 의존성 없음). turbo.json globalEnv에 OPENAI_API_KEY/MESHY_API_KEY 추가, 루트 .gitignore에 apps/backend/uploads/ 추가.",
+        "2026-07-10: apps/backend/src/__tests__/{generate-image,generate-3d,upload,uploads-static}.test.ts 신규(각각 vi.mock으로 openaiClient/meshyClient 모킹, 실제 네트워크 호출 없음) + 기존 app.test.ts에 API 키 비노출 단언 추가. pnpm --filter backend test → 6 test files / 20 tests 통과(신규 19개 + 기존 shared-types 1개 유지). 루트 pnpm build/test/lint/check-types/format:check 전부 통과, ./init.sh 15/15 통과.",
+        "2026-07-10: pnpm --filter backend dev로 실제 서버 기동 후 curl로 5개 엔드포인트 전부 수동 확인 — GET /health(200), POST /api/generate-image 빈 body(400 'prompt is required')와 키 미설정 상태에서 502('image generation failed', 키 값 노출 없음), POST /api/generate-3d 빈 body(400 'imageUrl is required'), POST /api/upload 파일 없음(400 'file is required'), GET /uploads/존재하지않는파일(404), GET /uploads/..%2F..%2Fpackage.json 경로순회 시도(400 'invalid filename'). 실제 파일 업로드(POST /api/upload) 후 그 파일을 GET /uploads/:filename으로 재조회해 바이트가 그대로 오는 것도 확인, 테스트 산출물은 정리함. OpenAI/Meshy 실제 키를 넣은 성공 경로(200)는 이 환경에 키가 없어 확인 불가 — 실제 키가 주입된 배포/개발 환경에서 별도 수동 확인 필요.",
+        "2026-07-10 (버그 수정 + 테스트 보강): 사용자가 테스트 케이스가 일부만 커버하는 게 아니냐고 지적. 재점검 결과 실제 버그 발견 — 깨진 JSON 바디를 보내면 docs/api-spec.md의 { error: string } 계약을 어기고 Express 기본 에러 핸들러가 HTML 페이지(서버 내부 파일 경로가 담긴 스택 트레이스 포함)를 그대로 응답하고 있었음(정보 노출). apps/backend/src/app.ts에 4-인자 에러 핸들링 미들웨어를 추가해 SyntaxError(express.json() 파싱 실패)를 400 { error: 'invalid JSON body' }로 변환하도록 수정, docs/api-spec.md 공통 사항에도 명시. 이 미들웨어의 마지막 인자(_next)가 항상 미사용이라 @typescript-eslint/no-unused-vars에 걸리는 문제는 packages/eslint-config/src/base.ts에 argsIgnorePattern: '^_' 규칙을 추가해 프로젝트 전체 컨벤션(_req 등 기존에도 쓰던 밑줄 무시 관례)으로 해결. 그 외 테스트 커버리지 공백도 보강: prompt/imageUrl이 문자열이 아닌 경우(400), mocked 클라이언트가 ExternalApiError가 아닌 일반 Error를 던졌을 때 502 fallback 분기, 업로드 시 필드명이 file이 아닌 경우(multer의 다른 에러 분기, 400), GET /uploads/:filename 성공 응답의 Content-Type 헤더. apps/backend 테스트 20개 → 26개로 증가, 전부 통과. pnpm build/test/lint/check-types/format:check 전부 재통과, ./init.sh 15/15 통과, curl로 malformed JSON 수정 재확인."
+      ],
+      "notes": "docs/api-spec.md 작성 완료(2026-07-10) — OpenAI Images API(이미지 생성)와 Meshy AI(image-to-3D)를 쓰기로 확정(docs/architecture.md '외부 AI API' 섹션과 동기화됨, 열린 질문 중 Generate 3D 동작 방식은 해소됨). monorepo-setup에서 apps/backend/src/app.ts에 GET /health가 이미 스캐폴딩되어 supertest 테스트 1개가 존재함 — 이 feature에서는 나머지 4개 엔드포인트(/api/generate-image, /api/generate-3d, /api/upload, /uploads/:filename)를 추가하고, /health를 API 키 비노출 검증에도 포함시켰다. 외부 API(OpenAI/Meshy) 실제 호출은 테스트에서 mock 처리(실제 네트워크 호출에 의존하는 테스트 없음). fan-in(여러 이미지 노드가 한 Generate 3D 노드에 연결)일 때 어떤 이미지를 보낼지는 여전히 미정 — /api/generate-3d는 우선 이미지 하나만 받는 계약으로 구현했고, 실제 조합 로직은 ai-image-generation/generate-3d-preview feature에서 확정한다. 실제 OpenAI/Meshy API 키를 쓴 종단 성공 경로는 이 세션 환경에 키가 없어 검증 못함(evidence 참고) — 다음으로 이 feature를 만지는 사람은 이 부분을 실제 키로 확인할 것."
     },
     {
       "id": "ws-protocol",
@@ -100,15 +106,19 @@
       "area": "apps/backend",
       "title": "커스텀 Yjs WebSocket 서버",
       "user_visible_behavior": "여러 클라이언트가 같은 room에 WebSocket으로 연결해 Yjs 문서를 동기화할 수 있다 (Hocuspocus 미사용, ws + y-protocols 직접 구현).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "Vitest 통합 테스트: ws 라이브러리로 직접 연결한 가짜 Yjs 클라이언트 2개를 만들어 SyncStep1/2 핸드셰이크가 되는지 확인한다.",
         "같은 테스트에서 한 클라이언트의 update가 다른 클라이언트로 중계되는지 확인한다.",
         "브라우저 없이 서버만으로 검증 가능해야 한다.",
         "docs/ws-protocol.md 5번 섹션의 재접속 시나리오(room에 다른 클라이언트가 남아있을 때 재연결하면 핸드셰이크만으로 전체 상태가 복원됨)도 같은 테스트 스위트에서 확인한다."
       ],
-      "evidence": [],
-      "notes": "docs/ws-protocol.md 작성 완료: envelope 구조(WS_MESSAGE_TYPE + y-protocols/sync 서브타입), 양방향 SyncStep1/2 핸드셰이크 시퀀스, 중계 규칙(SyncStep1/2는 1:1 응답, Update/Awareness만 브로드캐스트), room 생명주기(lazy 생성, 마지막 클라이언트 퇴장 시 정리), 필요 의존성(yjs, y-protocols, lib0 — 아직 apps/backend에 추가 안 됨) 전부 정의됨. 2026-07-09 화면 구성 변경(노드 파이프라인)의 영향을 받지 않는 전송 계층이라 이 문서/feature는 그대로 유효하다. 서버 코드에 PipelineNode/NodeType 같은 도메인 타입이 등장하면 안 된다(docs/ws-protocol.md 0번 섹션)."
+      "evidence": [
+        "2026-07-27: apps/backend/src/ws-server.ts를 스텁(연결만 수락)에서 room별 Y.Doc 기반 릴레이로 전면 구현. lazy room 생성(Map<roomId, Room>), 접속 시 SyncStep1 전송(+기존 awareness 상태 있으면 함께), SyncStep1→1:1 SyncStep2 응답/SyncStep2→적용만/Update·Awareness→적용 후 수신 바이트 그대로(재인코딩 없이) 다른 클라이언트에만 브로드캐스트, 퇴장 시 해당 클라이언트의 awareness 상태 제거 후 브로드캐스트, 마지막 클라이언트 퇴장 시 room 파괴. room 쿼리 파라미터 누락 시 4400으로 close. 인코딩은 lib0/encoding·decoding + y-protocols/sync·awareness 함수만 사용(바이너리 수제 파싱 없음). apps/backend에 yjs/y-protocols/lib0 의존성 추가.",
+        "2026-07-27: apps/backend/src/__tests__/ws-server.test.ts 신규 — ws 라이브러리 기반 헤드리스 TestClient(실제 Y.Doc 사용)로 (1) 2클라이언트 SyncStep1/2 핸드셰이크 완료(synced Promise가 SyncStep2 수신 시에만 resolve), (2) room 쿼리 누락 시 4400 close, (3) A의 doc 변경이 B의 독립 Y.Doc에 반영되는 update 중계, (4) B가 room에 남아있는 상태에서 A가 재접속하면 핸드셰이크만으로 nodes/edges 전체 상태 복원(5번 섹션 시나리오), (5) 마지막 클라이언트 퇴장 시 room 상태 소멸까지 5개 테스트로 커버. pnpm --filter backend test → 7 파일/31 테스트 통과(신규 5개 포함), pnpm turbo run build lint check-types test(./init.sh) → 15/15 성공.",
+        "2026-07-27 (QA 독립 검증, feature-loop 하네스 실행 테스트): 별도 QA 에이전트가 구현을 신뢰하지 않고 docs/ws-protocol.md와 ws-server.ts/ws-server.test.ts를 대조 재검증, pnpm --filter backend test / pnpm turbo run build lint check-types test를 직접 재실행해 동일하게 통과 확인. grep으로 apps/backend/src 전체에서 PipelineNode/NodeType 0건 확인(CLAUDE.md 절대 규칙), Update/Awareness 릴레이가 수신 바이트를 재인코딩 없이 그대로 전달함을 코드로 확인. verification 4항목 전부 실제 테스트로 커버됨(존재 확인이 아니라 각 시나리오가 실패 시 테스트가 실제로 깨지는 구조인지 확인)."
+      ],
+      "notes": "docs/ws-protocol.md 작성 완료: envelope 구조(WS_MESSAGE_TYPE + y-protocols/sync 서브타입), 양방향 SyncStep1/2 핸드셰이크 시퀀스, 중계 규칙(SyncStep1/2는 1:1 응답, Update/Awareness만 브로드캐스트), room 생명주기(lazy 생성, 마지막 클라이언트 퇴장 시 정리), 필요 의존성(yjs, y-protocols, lib0) 전부 정의됨. 2026-07-09 화면 구성 변경(노드 파이프라인)의 영향을 받지 않는 전송 계층이라 이 문서/feature는 그대로 유효하다. 서버 코드에 PipelineNode/NodeType 같은 도메인 타입이 등장하면 안 된다(docs/ws-protocol.md 0번 섹션) — QA가 grep으로 확인. awareness 릴레이 자체는 구현·연결 해제 시 정리 경로로 커버되지만, 실제 cursor payload를 담은 end-to-end awareness 시나리오는 verification 항목에 없어 별도로 단언하지 않음(collab-canvas feature에서 실제 awareness 페이로드 연동 시 확인 필요). 이 feature는 canvas-v에 새로 구축한 feature-loop 하네스(feature-implementer + qa-verifier)의 첫 실행 테스트 대상이었다 — 팀 통신은 이 세션에 TeamCreate가 없어 이름 지정 서브 에이전트(반환값 기반 핸드오프)로 대체됨(SKILL.md에 반영)."
     },
     {
       "id": "collab-canvas",

@@ -10,7 +10,7 @@ function createNode(type: NodeType, position: { x: number; y: number }): Pipelin
     case 'generateImage':
       return { id, type, position, status: 'idle', imageUrl: null, errorMessage: null };
     case 'generate3d':
-      return { id, type, position, status: 'idle', resultUrl: null, errorMessage: null };
+      return { id, type, position, status: 'idle', modelUrl: null, errorMessage: null };
   }
 }
 

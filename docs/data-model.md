@@ -69,13 +69,11 @@ awareness(커서/선택 상태)는 Y.Doc에 넣지 않는다. `y-protocols/aware
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
 | `status` | `NodeStatus` | 실행 상태 |
-| `resultUrl` | `string \| null` | 결과 URL. `status`가 `"ready"`가 아니면 `null` |
+| `modelUrl` | `string \| null` | 생성된 3D 에셋 URL. `status`가 `"ready"`가 아니면 `null` |
 | `errorMessage` | `string \| null` | `status`가 `"error"`일 때만 값이 있음 |
 
-출력 포트가 없는 터미널 노드다. `resultUrl`이라는 중립적인 이름을 쓴 이유: 이 노드가 실제로
-무엇을 만드는지(고정된 3D 모델에 이미지를 텍스처로 매핑한 결과인지, 별도 API로 생성한 3D
-에셋 URL인지)가 아직 `docs/architecture.md`의 "열린 질문"으로 남아 있기 때문이다. 확정되면
-필드명을 더 구체적으로(`textureUrl` 또는 `modelUrl` 등) 바꿀 수 있다.
+출력 포트가 없는 터미널 노드다. `docs/architecture.md`에서 확정한 대로, 서버가 Meshy AI
+(image-to-3D)를 호출해 3D 에셋을 생성하고 그 URL을 `modelUrl`에 담는다.
 
 입력 이미지도 마찬가지로 저장하지 않는다 — 실행 시점에 연결된 `generateImage` 노드들의
 `imageUrl`을 읽는다.
