@@ -6,13 +6,14 @@ import { NodeCardShell } from './NodeCardShell';
 import { PortHandle } from './PortHandle';
 
 export function Generate3dNode({ data }: NodeProps) {
-  const { pipelineNode, onDeleteNode } = data as unknown as PipelineNodeData;
+  const { pipelineNode, onDeleteNode, remoteSelectors } = data as unknown as PipelineNodeData;
   const node = pipelineNode as Generate3dNodeType;
 
   return (
     <NodeCardShell
       title="3D Mesh Synth"
       onDelete={() => onDeleteNode(node.id)}
+      remoteSelectors={remoteSelectors}
       headerRight={
         <Badge variant="secondary" className="font-mono text-[10px] text-slate-500">
           {node.status}

@@ -1,23 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
+import type * as Y from 'yjs';
 import type { NodeType, PipelineEdge, PipelineNode } from '@repo/shared-types';
-import { canConnect } from '@repo/shared-types';
-
-function createNode(type: NodeType, position: { x: number; y: number }): PipelineNode {
-  const id = crypto.randomUUID();
-  switch (type) {
-    case 'textPrompt':
-      return { id, type, position, prompt: '' };
-    case 'generateImage':
-      return { id, type, position, status: 'idle', imageUrl: null, errorMessage: null };
-    case 'generate3d':
-      return { id, type, position, status: 'idle', modelUrl: null, errorMessage: null };
-  }
-}
-
-interface PipelineState {
-  nodes: PipelineNode[];
-  edges: PipelineEdge[];
-}
+import { useCollab } from '@/collab/CollabContext';
+import * as pipelineDoc from '@/collab/pipelineDoc';
+import type { PipelineSnapshot } from '@/collab/pipelineDoc';
 
 export interface UsePipelineStateResult {
   nodes: PipelineNode[];
@@ -30,75 +16,78 @@ export interface UsePipelineStateResult {
   deleteEdge: (id: string) => void;
 }
 
+/**
+ * The Y.Doc is the only source of truth: every mutation writes to it and the
+ * React tree renders a cached read-only projection that is invalidated whenever
+ * Yjs reports a change (local or remote).
+ */
 export function usePipelineState(): UsePipelineStateResult {
-  const [state, setState] = useState<PipelineState>({ nodes: [], edges: [] });
-  const spawnCountRef = useRef(0);
+  const { doc } = useCollab();
+  const cacheRef = useRef<{ doc: Y.Doc; snapshot: PipelineSnapshot } | null>(null);
 
-  const addNode = useCallback((type: NodeType) => {
-    const offset = spawnCountRef.current;
-    spawnCountRef.current += 1;
-    const column = offset % 3;
-    const row = Math.floor(offset / 3);
-    const position = { x: 120 + column * 360, y: 100 + row * 340 };
-    setState((prev) => ({
-      ...prev,
-      nodes: [...prev.nodes, createNode(type, position)],
-    }));
-  }, []);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      pipelineDoc.observePipelineDoc(doc, () => {
+        cacheRef.current = null;
+        onChange();
+      }),
+    [doc],
+  );
 
-  const updateNodePosition = useCallback((id: string, position: { x: number; y: number }) => {
-    setState((prev) => ({
-      ...prev,
-      nodes: prev.nodes.map((node) => (node.id === id ? { ...node, position } : node)),
-    }));
-  }, []);
+  const getSnapshot = useCallback(() => {
+    if (cacheRef.current === null || cacheRef.current.doc !== doc) {
+      cacheRef.current = { doc, snapshot: pipelineDoc.readPipelineSnapshot(doc) };
+    }
+    return cacheRef.current.snapshot;
+  }, [doc]);
 
-  const updateTextPromptValue = useCallback((id: string, prompt: string) => {
-    setState((prev) => ({
-      ...prev,
-      nodes: prev.nodes.map((node) =>
-        node.id === id && node.type === 'textPrompt' ? { ...node, prompt } : node,
-      ),
-    }));
-  }, []);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
-  const deleteNode = useCallback((id: string) => {
-    setState((prev) => ({
-      nodes: prev.nodes.filter((node) => node.id !== id),
-      edges: prev.edges.filter((edge) => edge.sourceNodeId !== id && edge.targetNodeId !== id),
-    }));
-  }, []);
+  const addNode = useCallback(
+    (type: NodeType) => {
+      pipelineDoc.addNode(doc, type, pipelineDoc.nextSpawnPosition(doc));
+    },
+    [doc],
+  );
 
-  const addEdge = useCallback((sourceNodeId: string, targetNodeId: string) => {
-    setState((prev) => {
-      const sourceNode = prev.nodes.find((node) => node.id === sourceNodeId);
-      const targetNode = prev.nodes.find((node) => node.id === targetNodeId);
-      if (!sourceNode || !targetNode || !canConnect(sourceNode.type, targetNode.type)) {
-        return prev;
-      }
-      const alreadyConnected = prev.edges.some(
-        (edge) => edge.sourceNodeId === sourceNodeId && edge.targetNodeId === targetNodeId,
-      );
-      if (alreadyConnected) {
-        return prev;
-      }
-      return {
-        ...prev,
-        edges: [...prev.edges, { id: crypto.randomUUID(), sourceNodeId, targetNodeId }],
-      };
-    });
-  }, []);
+  const updateNodePosition = useCallback(
+    (id: string, position: { x: number; y: number }) => {
+      pipelineDoc.updateNodePosition(doc, id, position);
+    },
+    [doc],
+  );
 
-  const deleteEdge = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      edges: prev.edges.filter((edge) => edge.id !== id),
-    }));
-  }, []);
+  const updateTextPromptValue = useCallback(
+    (id: string, prompt: string) => {
+      pipelineDoc.updateTextPromptValue(doc, id, prompt);
+    },
+    [doc],
+  );
+
+  const deleteNode = useCallback(
+    (id: string) => {
+      pipelineDoc.deleteNode(doc, id);
+    },
+    [doc],
+  );
+
+  const addEdge = useCallback(
+    (sourceNodeId: string, targetNodeId: string) => {
+      pipelineDoc.addEdge(doc, sourceNodeId, targetNodeId);
+    },
+    [doc],
+  );
+
+  const deleteEdge = useCallback(
+    (id: string) => {
+      pipelineDoc.deleteEdge(doc, id);
+    },
+    [doc],
+  );
 
   return {
-    nodes: state.nodes,
-    edges: state.edges,
+    nodes: snapshot.nodes,
+    edges: snapshot.edges,
     addNode,
     updateNodePosition,
     updateTextPromptValue,

@@ -1,6 +1,6 @@
 {
   "ui": "tui",
-  "globalEnv": ["PORT", "OPENAI_API_KEY", "MESHY_API_KEY"],
+  "globalEnv": ["PORT", "OPENAI_API_KEY", "MESHY_API_KEY", "VITE_WS_URL", "DEV"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

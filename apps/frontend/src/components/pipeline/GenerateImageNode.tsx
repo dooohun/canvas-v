@@ -7,13 +7,14 @@ import { NodeCardShell } from './NodeCardShell';
 import { PortHandle } from './PortHandle';
 
 export function GenerateImageNode({ data }: NodeProps) {
-  const { pipelineNode, onDeleteNode } = data as unknown as PipelineNodeData;
+  const { pipelineNode, onDeleteNode, remoteSelectors } = data as unknown as PipelineNodeData;
   const node = pipelineNode as GenerateImageNodeType;
 
   return (
     <NodeCardShell
       title="Generate Image"
       onDelete={() => onDeleteNode(node.id)}
+      remoteSelectors={remoteSelectors}
       headerRight={
         <Badge variant="secondary" className="font-mono text-[10px] text-slate-500">
           {node.status}

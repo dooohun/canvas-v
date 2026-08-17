@@ -1,15 +1,21 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
+  ReactFlowProvider,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Node,
   type NodeChange,
+  type OnSelectionChangeParams,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import type { AwarenessState } from '@repo/shared-types';
+import { useCollab } from '@/collab/CollabContext';
+import { groupSelectorsByNodeId, useLocalPresence, useRemotePresence } from '@/collab/usePresence';
 import { usePipelineState } from '@/pipeline/usePipelineState';
 import {
   reconcileFlowNodes,
@@ -17,9 +23,13 @@ import {
   type PipelineNodeData,
 } from '@/pipeline/reactFlowAdapter';
 import { AddNodeToolbar } from './AddNodeToolbar';
+import { PresenceBar } from './PresenceBar';
+import { RemoteCursors } from './RemoteCursors';
 import { TextPromptNode } from './TextPromptNode';
 import { GenerateImageNode } from './GenerateImageNode';
 import { Generate3dNode } from './Generate3dNode';
+
+const CURSOR_THROTTLE_MS = 40;
 
 const nodeTypes = {
   textPrompt: TextPromptNode,
@@ -28,6 +38,15 @@ const nodeTypes = {
 };
 
 export function PipelineCanvas() {
+  return (
+    <ReactFlowProvider>
+      <PipelineCanvasInner />
+    </ReactFlowProvider>
+  );
+}
+
+function PipelineCanvasInner() {
+  const { awareness, status, roomId } = useCollab();
   const {
     nodes,
     edges,
@@ -38,6 +57,12 @@ export function PipelineCanvas() {
     addEdge,
     deleteEdge,
   } = usePipelineState();
+  const remotePresence = useRemotePresence();
+  const { setSelectedNodeId, setCursor } = useLocalPresence();
+  const { screenToFlowPosition } = useReactFlow();
+
+  const localState = awareness.getLocalState() as AwarenessState | null;
+  const selectorsByNodeId = useMemo(() => groupSelectorsByNodeId(remotePresence), [remotePresence]);
 
   const nodeHandlers = useMemo(
     () => ({ onChangePrompt: updateTextPromptValue, onDeleteNode: deleteNode }),
@@ -48,11 +73,14 @@ export function PipelineCanvas() {
   // and only patch it in on a second render pass, causing a visible flicker/lag on every change.
   const [flowNodes, setFlowNodes, onFlowNodesChangeInternal] = useNodesState<
     Node<PipelineNodeData>
-  >(reconcileFlowNodes(nodes, [], nodeHandlers));
-  const prevNodesRef = useRef(nodes);
-  if (prevNodesRef.current !== nodes) {
-    prevNodesRef.current = nodes;
-    setFlowNodes((current) => reconcileFlowNodes(nodes, current, nodeHandlers));
+  >(reconcileFlowNodes(nodes, [], nodeHandlers, selectorsByNodeId));
+  const prevInputsRef = useRef({ nodes, selectorsByNodeId });
+  if (
+    prevInputsRef.current.nodes !== nodes ||
+    prevInputsRef.current.selectorsByNodeId !== selectorsByNodeId
+  ) {
+    prevInputsRef.current = { nodes, selectorsByNodeId };
+    setFlowNodes((current) => reconcileFlowNodes(nodes, current, nodeHandlers, selectorsByNodeId));
   }
 
   const flowEdges = useMemo(() => toReactFlowEdges(edges), [edges]);
@@ -60,7 +88,7 @@ export function PipelineCanvas() {
   const handleNodesChange = useCallback(
     (changes: NodeChange<Node<PipelineNodeData>>[]) => {
       // Only our own toolbar/delete buttons may remove a node — drop React Flow's own
-      // 'remove' changes (e.g. keyboard delete) so the domain state can't desync.
+      // 'remove' changes (e.g. keyboard delete) so the shared state can't desync.
       const applicable = changes.filter((change) => change.type !== 'remove');
       onFlowNodesChangeInternal(applicable);
       for (const change of applicable) {
@@ -90,8 +118,34 @@ export function PipelineCanvas() {
     [deleteEdge],
   );
 
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
+      setSelectedNodeId(selectedNodes[0]?.id ?? null);
+    },
+    [setSelectedNodeId],
+  );
+
+  const lastCursorSentAtRef = useRef(0);
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent) => {
+      const now = Date.now();
+      if (now - lastCursorSentAtRef.current < CURSOR_THROTTLE_MS) return;
+      lastCursorSentAtRef.current = now;
+      setCursor(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
+    },
+    [screenToFlowPosition, setCursor],
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    setCursor(null);
+  }, [setCursor]);
+
   return (
-    <div className="relative h-screen w-screen bg-[#f8f9ff]">
+    <div
+      className="relative h-screen w-screen bg-[#f8f9ff]"
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+    >
       <ReactFlow
         nodes={flowNodes}
         edges={flowEdges}
@@ -99,6 +153,7 @@ export function PipelineCanvas() {
         onNodesChange={handleNodesChange}
         onConnect={handleConnect}
         onEdgesDelete={handleEdgesDelete}
+        onSelectionChange={handleSelectionChange}
         deleteKeyCode={['Backspace', 'Delete']}
         nodesFocusable
         edgesFocusable
@@ -109,7 +164,19 @@ export function PipelineCanvas() {
           className="!rounded-lg !border !border-slate-200 !bg-white !shadow-lg"
           showInteractive={false}
         />
+        <RemoteCursors remotePresence={remotePresence} />
       </ReactFlow>
+      <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center">
+        <div className="pointer-events-auto">
+          <PresenceBar
+            roomId={roomId}
+            status={status}
+            localName={localState?.name ?? '나'}
+            localColor={localState?.color ?? '#94a3b8'}
+            remotePresence={remotePresence}
+          />
+        </div>
+      </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-8 flex justify-center">
         <div className="pointer-events-auto">
           <AddNodeToolbar onAddNode={addNode} />
