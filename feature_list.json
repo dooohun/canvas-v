@@ -126,12 +126,14 @@
       "area": "apps/frontend",
       "title": "협업 파이프라인 캔버스 (Yjs 연동)",
       "user_visible_behavior": "pipeline-canvas의 로컬 노드/엣지 상태가 Yjs 공유 상태로 전환되어, 여러 사용자가 같은 room에서 실시간으로 같은 파이프라인을 함께 편집할 수 있다.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "docs/acceptance-criteria.md의 협업 시나리오(재작성 필요, 옛 시나리오 1~5에 대응)를 순서대로 수동 실행해 확인한다."
       ],
-      "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태이므로, 새 노드 파이프라인 기준으로 협업 시나리오를 먼저 구체적으로 작성해야 한다. pipeline-canvas, ws-protocol, shared-types(재구현)에 의존."
+      "evidence": [
+        "2026-08-17: usePipelineState의 로컬 useState를 제거하고 Y.Doc(nodes/edges Y.Map<Y.Map>)을 유일한 진실 소스로 전환하고, docs/ws-protocol.md의 커스텀 envelope을 말하는 WS provider와 awareness(선택 노드·커서) 공유를 배관했다. pnpm turbo run build lint check-types test 15/15 통과(frontend 31 tests/6 files, lint 경고 0). 실제 backend WS 릴레이(:3001)에 provider 3개를 붙여 협업 시나리오를 라이브 검증: 양방향 노드 추가·프롬프트 편집·노드 이동 실시간 반영, text→image 엣지 생성 및 image→text 거부(서버는 규칙을 모르며 검증은 클라이언트 전용), 동일 노드 동시 이동의 결정론적 수렴(양쪽 동일 좌표), 노드 삭제 시 고아 엣지 동시 제거, 뒤늦은 합류자의 SyncStep1/2 전체 상태 복원, awareness 전파와 떠난 피어 상태 제거까지 11개 항목 전부 확인. backend 프로세스를 kill한 뒤 재기동하는 라이브 시나리오에서 1초 간격 자동 재연결과 생존 클라이언트 Y.Doc 재업로드(신규 피어가 prompt까지 수신)를 확인했다. QA 과정에서 연결 실패 시 onerror 핸들러가 socket.close()를 호출해 close가 error를 재발화시키며 무한 재귀(RangeError)로 프로세스가 죽는 결함을 발견했고 — 이로 인해 시나리오 4-(3) 자동 재연결이 성립하지 않았다 — handleDisconnect() 호출로 교체해 수정한 뒤, 핸드셰이크 실패 시 재귀 없이 재연결 타이머가 정확히 1회만 걸리는지 확인하는 회귀 테스트를 추가했다(수정을 되돌리면 RangeError로 실패하는 것을 확인). 인코딩은 전량 y-protocols/lib0(수제 바이너리 파싱 부재를 grep으로 확인, y-websocket 미사용), apps/backend는 무수정(git diff main -- apps/backend/ 공백), 엣지 유효성은 shared-types의 canConnect를 재사용해 규칙 중복 정의 없음. docs/acceptance-criteria.md 협업 시나리오 1~5를 사전조건/조작순서/기대결과/자동화 가능 여부로 작성했고, 인용된 테스트 이름·UI 문자열·room 기본값이 실제 코드와 일치하는지 전수 대조했다. 미검증: 포트 핸들을 실제 마우스로 드래그하는 조작, 사람 2명 동시 조작 체감. Commit: 0e0f131 (브랜치 feature-loop/remaining-features)."
+      ],
+      "notes": "docs/acceptance-criteria.md가 스텁이었으나 이 feature 범위에서 협업 시나리오 1~5를 구체화했다(6~11은 TODO로 남김). pipeline-canvas, ws-protocol, shared-types(재구현)에 의존. 후속 과제: (1) IME 조합 중 원격 덮어쓰기 — TextPromptNode의 textarea가 Y.Doc 값을 받는 controlled 컴포넌트라 한글 IME 조합 중 원격 update가 같은 노드 prompt를 덮으면 조합이 끊길 수 있음(필드 단위 LWW 한계와 동일 뿌리, 해결하려면 prompt를 Y.Text로 승격 필요). (2) apps/backend/src/__tests__/shared-types.test.ts에 도메인 타입(PipelineNode 등)이 등장 — main 시점부터 있던 기존 파일이고 이번 feature가 건드리지 않았으나, shared-types 계약 확인용 테스트라도 '서버 코드에 도메인 타입 금지' 규칙 문구와 긴장 관계라 별도 판단 필요하면 후속 이슈로. (3) 포트 드래그 실조작(마우스)과 2인 동시 조작 체감은 미검증."
     },
     {
       "id": "ai-image-generation",

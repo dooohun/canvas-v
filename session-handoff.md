@@ -1,76 +1,79 @@
 # Session Handoff
 
-## Last Session: 2026-07-10 (Session 011)
+## Last Session: 2026-08-17 (feature-loop 하네스 실행 — collab-canvas)
 
 ### What Was Accomplished
 
-- `pipeline-canvas`(priority 3) 구현 완료 — React Flow 기반 노드 파이프라인 캔버스,
-  Tailwind v4 + shadcn/ui, Figma 시안 기준, 전역 상태 없이 `usePipelineState` 로컬 훅.
-  사용자가 보고한 버그 3건(드래그 깜빡임/배경 dot 미표시/타이핑 중 IME 포커스 풀림)
-  처리 — 근본 원인은 `useEffect` 기반 재조정이 만든 지연된 두 번째 렌더 패스였고,
-  React 공식 "렌더링 중 상태 조정" 패턴으로 교체해 해결. Commit: `4a1214a`.
-- `claude-progress.md`를 learn-harness-engineering L05 가이드에 맞춰 슬림화, `CLAUDE.md`에
-  "불필요한 주석 금지" 규칙 추가. Commit: `b658a83`.
-- Generate 3D 노드 동작 방식을 사용자와 확정(서버가 Meshy AI 호출, 이미지 생성은 OpenAI
-  Images API) — `docs/architecture.md` "열린 질문" 해소, `Generate3dNode.resultUrl` →
-  `modelUrl` rename. `docs/api-spec.md` 작성(5개 엔드포인트 요청/응답/에러 스키마).
-- `rest-api`(priority 4) 구현 완료 — `apps/backend`에 `POST /api/generate-image`,
-  `POST /api/generate-3d`, `POST /api/upload`, `GET /uploads/:filename` 추가
-  (`GET /health`는 기존). 외부 API는 Node 22 내장 `fetch`로 호출, `multer`로 업로드
-  처리, 생성 결과는 항상 `/uploads/:filename` 상대 URL로만 응답. 테스트 6 파일/20개
-  전부 통과(외부 API는 `vi.mock`으로 모킹, 실제 네트워크 호출 없음). `curl`로 5개
-  엔드포인트 전부 수동 스모크 테스트(업로드→조회 왕복 포함) 완료.
-- `rest-api.status` → `passing`(`feature_list.json` evidence 참고).
-- **아직 커밋 안 됨**: Generate3dNode rename, `docs/api-spec.md`, `docs/architecture.md`
-  수정, `rest-api` 구현 전체.
+- `ws-protocol`(priority 5) 구현 완료(이전 세션, feature-loop 하네스 첫 실행 테스트) —
+  `apps/backend/src/ws-server.ts`를 room별 Y.Doc 릴레이로 전면 구현. Commit: `4233faa`.
+- `feature-loop` 하네스의 브랜치 전략 변경 — 지금부터 `main`에 직접 커밋하지 않고
+  `feature-loop/remaining-features` 브랜치에서 작업, 9/9 feature `passing` 시 그 브랜치를
+  `main`으로 향하는 PR로 한 번만 올림(사용자가 직접 리뷰 후 merge). 자동 구현 루프가 만든
+  코드를 사람이 반드시 리뷰하게 하기 위한 사용자 요청. `.github/PULL_REQUEST_TEMPLATE.md`
+  신규 작성(웹의 PR 템플릿 베스트프랙티스 참고 — Summary/포함된 feature/리뷰어가 특히 봐야
+  할 곳/검증 방법/브레이킹 체인지 5개 섹션, "리뷰어가 특히 봐야 할 곳"에 implementer·QA가
+  남긴 미확인/임시방편 항목을 강제로 옮겨 적도록 함).
+- `collab-canvas`(priority 6) 구현 완료 — `pipeline-canvas`의 로컬 `usePipelineState`
+  (useState 기반)를 Y.Doc(nodes/edges `Y.Map<Y.Map>`) 단일 진실 소스로 전환.
+  `apps/frontend/src/collab/`에 `YjsWebSocketProvider.ts`(docs/ws-protocol.md 커스텀
+  envelope을 직접 배관, y-websocket 미사용, 인코딩은 전량 `y-protocols`/`lib0`),
+  `pipelineDoc.ts`(Y.Map CRUD, 노드 삭제+고아 엣지 정리를 `doc.transact` 1건으로),
+  awareness(선택 노드 + 커서) 공유용 `CollabContext`/`useCollabRoom`/`usePresence` 신규.
+  `apps/backend`는 한 줄도 수정하지 않음(ws-protocol이 이미 이 프로토콜을 구현해뒀음).
+  QA가 재연결 시 무한 재귀(RangeError)로 프로세스가 죽는 결함 1건을 발견 →
+  `onerror`의 `socket.close()`를 `this.handleDisconnect()`로 교체해 수정, 회귀 테스트
+  추가(QA가 독립적으로 수정을 되돌려 테스트가 실제로 실패하는 것까지 확인).
+  `docs/acceptance-criteria.md`의 협업 시나리오 1~5를 사전조건/조작순서/기대결과/자동화
+  가능 여부로 신규 작성. Commit: `0e0f131`(브랜치 `feature-loop/remaining-features`).
+- `collab-canvas.status` → `passing`(`feature_list.json` evidence 참고).
 
 ### What Remains
 
-- `ws-protocol`(priority 5) — 문서(`docs/ws-protocol.md`)는 이미 준비됨, 바로 시작 가능.
-- `docs/acceptance-criteria.md`는 여전히 스텁 — `collab-canvas`/`ai-image-generation`/
-  `generate-3d-preview`를 시작하기 전 재작성 필요.
-- `rest-api`의 실제 OpenAI/Meshy 키를 쓴 성공 경로(200)는 이 세션 환경에 키가 없어
+- `ai-image-generation`(priority 7) — 다음 대상. `docs/acceptance-criteria.md` 시나리오
+  6~8·10~11을 이 feature 범위에서 작성해야 함. fan-in(여러 Text Prompt가 한 Generate
+  Image에 연결) 시 프롬프트 병합 규칙이 미정 — 이 feature에서 확정 필요.
+- `generate-3d-preview`(priority 8), `optimization-pass`(priority 9)는 아직 시작 전.
+- 9/9 전부 passing이 되기 전까지는 PR을 만들지 않는다(하네스 규칙). 현재 6/9 passing.
+- `rest-api`의 실제 `OPENAI_API_KEY`/`MESHY_API_KEY`를 넣은 성공 경로(200)는 여전히
   미검증 — 실제 키가 주입된 환경에서 수동 확인 필요.
 
 ### Decisions Made
 
-- 전역 상태 최소화, React Flow 재조정은 렌더링 중 상태 조정 패턴 사용(이전 세션 결정,
-  유효함).
-- GraphQL 검토 후 기각, REST 유지 — 이 프로젝트는 관계형 조회가 아니라 액션형 호출
-  몇 개뿐이라 GraphQL의 장점이 발휘될 도메인이 아니고, `docs/product-plan.md`가 REST를
-  이미 지원 직무 어필 포인트로 명시함.
-- Generate 3D 노드: 클라이언트 텍스처 매핑이 아니라 서버가 Meshy AI(image-to-3D)를
-  호출하는 방식. 이미지 생성은 OpenAI Images API. 두 API 키 모두 서버 환경변수
-  (`OPENAI_API_KEY`, `MESHY_API_KEY`)로만 관리, `turbo.json`의 `globalEnv`에 등록.
-- `POST /api/generate-3d`는 이미지 하나만 받는 계약으로 시작 — fan-in 조합 로직은
-  아직 미정이라 이후 feature에서 확정.
-- 생성된 이미지/3D 에셋은 OpenAI/Meshy가 주는 임시 URL을 그대로 노출하지 않고, 서버가
-  다운로드해 `/uploads/:filename`으로 재호스팅 — 만료된 외부 URL에 의존하지 않기 위함.
-- 외부 API 클라이언트(`openaiClient`/`meshyClient`)는 라우트에서 분리해 테스트에서
-  `vi.mock()`으로 통째로 모킹 — 실제 네트워크에 의존하는 테스트를 만들지 않기 위함.
-- 진행 로그 관리 방식(전 세션 결정, 유효함): `claude-progress.md`는 상태 스냅샷 위주,
-  "왜" 판단은 이 파일의 "Decisions Made"에 남김. 별도 `DECISIONS.md`는 만들지 않음.
+- (이전 세션 결정, 유효함) 전역 상태 최소화, React Flow 재조정은 렌더링 중 상태 조정
+  패턴 사용. REST 유지(GraphQL 기각). Generate 3D는 서버가 Meshy AI 호출.
+- **브랜치 전략**: `main` 직접 커밋 중단, `feature-loop/remaining-features`에서 작업 후
+  9/9 passing 시 PR 1개로 통합(사용자 요청 — 자동 구현 루프의 산출물을 반드시 사람이
+  리뷰하게 하기 위함). feature마다 PR을 열지 않는 이유: 자동 루프 특성상 중간 산출물에
+  리팩터링이 덜 끝난 코드가 섞이기 쉬워서, 리뷰는 전체가 끝난 뒤 한 번에 받는 게 낫다고
+  판단.
+- **Yjs 클라이언트는 y-websocket을 쓰지 않는다**: 서버가 커스텀 프로토콜(docs/ws-protocol.md)
+  이므로 클라이언트도 그 envelope에 맞춰 직접 배관해야 함. 단 바이너리 인코딩 자체는
+  반드시 `y-protocols`/`lib0` 함수로만 생성(CLAUDE.md 절대 규칙).
+- **동시 편집 충돌 처리 기본값**: 같은 필드(예: 같은 텍스트 노드의 prompt)를 동시 타이핑하면
+  필드 단위 Last-Write-Wins로 병합됨(Yjs Y.Map의 기본 동작). 문자 단위 병합이 필요해지면
+  `Y.Text`로 승격 — 이번 범위에서는 하지 않음(후속 과제로 `feature_list.json`의
+  `collab-canvas.notes`에 기록).
+- (이전 세션 결정, 유효함) 진행 로그 관리 방식: `claude-progress.md`는 상태 스냅샷 위주,
+  "왜" 판단은 이 파일의 "Decisions Made"에 남김.
 
 ### Files Modified
 
-(이전 라운드 `pipeline-canvas` 변경은 커밋 `4a1214a`/`b658a83` 참고, 여기서는 이번
-라운드에서 커밋 안 된 변경만 나열)
-
-- `docs/architecture.md`(외부 AI API 섹션, 열린 질문 정리), `docs/data-model.md`
-  (`resultUrl` → `modelUrl`), `docs/api-spec.md`(스텁 → 5개 엔드포인트 명세)
-- `packages/shared-types/src/node.ts`(`Generate3dNode.resultUrl` → `modelUrl`)
-- `apps/frontend/src/pipeline/usePipelineState.ts`,
-  `apps/backend/src/__tests__/shared-types.test.ts`(필드명 rename 반영)
-- `apps/backend/src/lib/{storage,externalApiError,openaiClient,meshyClient}.ts`(신규)
-- `apps/backend/src/routes/{generateImage,generate3d,upload,uploads}.ts`(신규)
-- `apps/backend/src/app.ts`(라우터 마운트), `apps/backend/src/__tests__/app.test.ts`
-  (API 키 비노출 단언 추가)
-- `apps/backend/src/__tests__/{generate-image,generate-3d,upload,uploads-static}.test.ts`
-  (신규)
-- `apps/backend/package.json`(`multer`, `@types/multer` 추가), `turbo.json`(`globalEnv`),
-  루트 `.gitignore`(`apps/backend/uploads/`)
-- `feature_list.json`(`rest-api` 항목 `passing` 전환), `claude-progress.md`,
-  `session-handoff.md`
+- `apps/frontend/src/collab/`(신규: `pipelineDoc.ts`, `YjsWebSocketProvider.ts`,
+  `CollabContext.tsx`, `useCollabRoom.ts`, `localIdentity.ts`, `usePresence.ts`,
+  `__tests__/{pipelineDoc,YjsWebSocketProvider}.test.ts` + 헬퍼)
+- `apps/frontend/src/components/pipeline/{PresenceBar,RemoteCursors}.tsx`(신규),
+  `PipelineCanvas.tsx`(ReactFlowProvider 래핑, awareness 발행, presence UI),
+  `TextPromptNode.tsx`(textarea에 `nodrag` 추가 — pipeline-canvas 시절부터 있던 회귀
+  버그를 이번에 발견해 함께 수정)
+- `apps/frontend/src/pipeline/usePipelineState.ts`(useState 제거, `useSyncExternalStore`
+  + `observeDeep`), `reactFlowAdapter.ts`(원격 좌표 반영 버그 수정)
+- `docs/acceptance-criteria.md`(협업 시나리오 1~5 신규 작성)
+- `turbo.json`(`globalEnv`에 `VITE_WS_URL`, `DEV` 추가)
+- `.github/PULL_REQUEST_TEMPLATE.md`(신규), `.claude/skills/feature-loop/SKILL.md`
+  (브랜치 전략 + 완료 시 PR 자동 생성 절차 추가), `CLAUDE.md`(하네스 변경 이력),
+  `.claude/observability/feature-loop.jsonl`(신규, feature-loop 실행 이벤트 로그)
+- `feature_list.json`(`collab-canvas` 항목 `passing` 전환), `session-handoff.md`,
+  `claude-progress.md`
 
 ### Blockers
 
@@ -78,8 +81,9 @@
 
 ### Next Steps
 
-1. `ws-protocol`(priority 5) feature 구현 — `docs/ws-protocol.md` 기준으로 room별 Y.Doc
-   유지, SyncStep1/2 핸드셰이크, 중계 규칙을 `ws` + `y-protocols`로 구현. `yjs`,
-   `y-protocols`, `lib0` 의존성을 `apps/backend`에 추가해야 함(아직 없음).
-2. 실제 `OPENAI_API_KEY`/`MESHY_API_KEY`를 넣은 환경에서 `rest-api`의 성공 경로(200)를
-   수동으로 한 번 확인해둘 것.
+1. `ai-image-generation`(priority 7) feature 구현 — `feature-loop` 스킬 호출로 진행.
+   `docs/acceptance-criteria.md` 시나리오 6~8·10~11 작성 + fan-in 프롬프트 병합 규칙
+   확정이 이 feature 범위.
+2. 9/9 passing 도달 시 `feature-loop` 하네스가 자동으로 `feature-loop/remaining-features`
+   → `main` PR을 생성한다 — 그 전까지는 PR 없음.
+3. `rest-api`의 실제 API 키 종단 검증은 여전히 별도로 필요.

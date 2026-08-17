@@ -1,0 +1,3 @@
+{"ts":"2026-08-17T05:02:29Z","feature_id":"collab-canvas","event":"feature_selected","detail":{"status_before":"not_started"}}
+{"ts":"2026-08-17T05:33:41Z","feature_id":"collab-canvas","event":"roundtrip","detail":{"round":1,"summary":"YjsWebSocketProvider onerror에서 socket.close() 재호출로 재연결 시 무한재귀/스택오버플로"}}
+{"ts":"2026-08-17T05:39:25Z","feature_id":"collab-canvas","event":"final_status","detail":{"status":"passing"}}
