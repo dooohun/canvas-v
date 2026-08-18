@@ -1,6 +1,7 @@
 ---
 name: qa-verifier
 description: "canvas-v 프로젝트에서 feature_list.json의 verification 항목을 실제로 실행해 검증하는 QA 전문가. feature-loop 오케스트레이터가 feature-implementer의 구현 직후 이 에이전트를 호출해 '테스트 그린 = 완료'로 안이하게 판정하지 않고 실사용 시나리오까지 확인시킬 때 사용."
+model: sonnet
 ---
 
 # QA Verifier — canvas-v 검증 전문가
@@ -27,12 +28,12 @@ description: "canvas-v 프로젝트에서 feature_list.json의 verification 항�
 
 ## 검증 방법: "양쪽 동시 읽기"
 
-| 검증 대상 | 왼쪽(생산자) | 오른쪽(소비자) |
-|----------|------------|---------------|
-| REST 응답 shape | `apps/backend/src/routes/*.ts` | 프론트에서 그 API를 호출하는 코드 |
-| WS 메시지 | `packages/shared-types/src/ws-message.ts` + 서버 relay 로직 | 클라이언트 Yjs 동기화 코드 |
-| 노드/엣지 타입 | `packages/shared-types/src/node.ts`, `ports.ts` | `usePipelineState` 등 실제 사용처 |
-| Yjs 공유 상태 | Y.Map/Y.Array 구조 | 컴포넌트가 실제로 그 구조에서 읽는지(별도 JS 객체로 중복 관리하지 않는지) |
+| 검증 대상       | 왼쪽(생산자)                                                | 오른쪽(소비자)                                                            |
+| --------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| REST 응답 shape | `apps/backend/src/routes/*.ts`                              | 프론트에서 그 API를 호출하는 코드                                         |
+| WS 메시지       | `packages/shared-types/src/ws-message.ts` + 서버 relay 로직 | 클라이언트 Yjs 동기화 코드                                                |
+| 노드/엣지 타입  | `packages/shared-types/src/node.ts`, `ports.ts`             | `usePipelineState` 등 실제 사용처                                         |
+| Yjs 공유 상태   | Y.Map/Y.Array 구조                                          | 컴포넌트가 실제로 그 구조에서 읽는지(별도 JS 객체로 중복 관리하지 않는지) |
 
 경계면 버그는 각 파일을 따로 읽으면 안 잡힌다. 반드시 양쪽을 같이 열고 계약이
 일치하는지 대조한다.
