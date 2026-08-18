@@ -1,12 +1,17 @@
+import { lazy, Suspense } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { Box, LoaderCircle, Play, TriangleAlert } from 'lucide-react';
 import type { Generate3dNode as Generate3dNodeType } from '@repo/shared-types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { PipelineNodeData } from '@/pipeline/reactFlowAdapter';
-import { ModelViewer } from './ModelViewer';
 import { NodeCardShell } from './NodeCardShell';
 import { PortHandle } from './PortHandle';
+
+/** Keeps three.js (~1MB minified) out of the initial bundle until a 3D result actually exists. */
+const ModelViewer = lazy(() =>
+  import('./ModelViewer').then((module) => ({ default: module.ModelViewer })),
+);
 
 function runLabel(status: Generate3dNodeType['status'], isRunning: boolean): string {
   if (isRunning) return '생성 중...';
@@ -39,7 +44,15 @@ export function Generate3dNode({ data }: NodeProps) {
       bodyClassName="flex flex-col gap-3"
     >
       {node.status === 'ready' && node.modelUrl ? (
-        <ModelViewer modelUrl={node.modelUrl} />
+        <Suspense
+          fallback={
+            <div className="flex aspect-square w-full items-center justify-center rounded-md bg-slate-950">
+              <LoaderCircle className="size-[18px] animate-spin text-slate-400" />
+            </div>
+          }
+        >
+          <ModelViewer modelUrl={node.modelUrl} />
+        </Suspense>
       ) : (
         <div className="flex aspect-square w-full items-center justify-center rounded-md border border-slate-200 bg-slate-950">
           {isRunning ? (

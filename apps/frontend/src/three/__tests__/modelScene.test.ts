@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Mesh, MeshStandardMaterial, PerspectiveCamera, Scene, SphereGeometry } from 'three';
+import {
+  Mesh,
+  MeshStandardMaterial,
+  PerspectiveCamera,
+  Scene,
+  SphereGeometry,
+  Texture,
+} from 'three';
 import { createModelScene, MODEL_LOAD_ERROR_MESSAGE } from '../modelScene';
 
 /**
@@ -13,6 +20,7 @@ const rendererState = vi.hoisted(() => ({
     animationLoop: unknown;
     disposed: boolean;
     renderCalls: number;
+    info: { render: { calls: number } };
   }[],
 }));
 
@@ -24,6 +32,7 @@ vi.mock('three', async (importOriginal) => {
     animationLoop: unknown = null;
     disposed = false;
     renderCalls = 0;
+    info = { render: { calls: 3 } };
 
     constructor({ canvas }: { canvas: HTMLCanvasElement }) {
       this.domElement = canvas;
@@ -49,6 +58,7 @@ vi.mock('three', async (importOriginal) => {
 const loaderState = vi.hoisted(() => ({
   requestedUrls: [] as string[],
   fail: false,
+  lastTexture: null as { dispose: () => void } | null,
 }));
 
 vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
@@ -64,7 +74,10 @@ vi.mock('three/examples/jsm/loaders/GLTFLoader.js', () => ({
         onError(new Error('404'));
         return;
       }
-      const mesh = new Mesh(new SphereGeometry(2, 8, 8), new MeshStandardMaterial());
+      const material = new MeshStandardMaterial();
+      material.map = new Texture();
+      loaderState.lastTexture = material.map;
+      const mesh = new Mesh(new SphereGeometry(2, 8, 8), material);
       mesh.position.set(10, 10, 10);
       onLoad({ scene: mesh });
     }
@@ -81,6 +94,7 @@ afterEach(() => {
   rendererState.instances.length = 0;
   loaderState.requestedUrls.length = 0;
   loaderState.fail = false;
+  loaderState.lastTexture = null;
   document.body.replaceChildren();
 });
 
@@ -131,18 +145,90 @@ describe('createModelScene', () => {
     handle.dispose();
   });
 
-  it('renders on each animation frame and tears everything down on dispose', () => {
+  it('draws the first frame and then stays idle until something changes', () => {
     const handle = setup();
     const renderer = rendererState.instances[0]!;
+    const tick = renderer.animationLoop as () => void;
 
     expect(typeof renderer.animationLoop).toBe('function');
-    (renderer.animationLoop as () => void)();
+    tick();
+    expect(renderer.renderCalls).toBe(1);
+
+    for (let i = 0; i < 10; i += 1) tick();
     expect(renderer.renderCalls).toBe(1);
 
     handle.dispose();
+  });
 
-    expect(renderer.animationLoop).toBeNull();
-    expect(renderer.disposed).toBe(true);
+  it('draws again when the camera moves', () => {
+    const handle = setup();
+    const renderer = rendererState.instances[0]!;
+    const tick = renderer.animationLoop as () => void;
+    tick();
+
+    handle.camera.position.multiplyScalar(1.5);
+    handle.controls.update();
+    tick();
+
+    expect(renderer.renderCalls).toBe(2);
+
+    handle.dispose();
+  });
+
+  it('reports rendered frames and draw calls for the optimization benchmark', () => {
+    const handle = setup();
+    const renderer = rendererState.instances[0]!;
+    const tick = renderer.animationLoop as () => void;
+
+    for (let i = 0; i < 60; i += 1) tick();
+
+    const stats = handle.getStats();
+    expect(stats.ticks).toBe(60);
+    expect(stats.frames).toBe(1);
+    expect(stats.drawCalls).toBe(renderer.info.render.calls);
+
+    handle.dispose();
+  });
+
+  it('logs the measurement window only when opened with ?three-stats', () => {
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    let clock = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    try {
+      const quiet = setup();
+      const quietTick = rendererState.instances[0]!.animationLoop as () => void;
+      quietTick();
+      clock += 1500;
+      quietTick();
+      expect(log).not.toHaveBeenCalled();
+      quiet.dispose();
+
+      window.history.replaceState(null, '', '/?three-stats');
+      const handle = setup();
+      const tick = rendererState.instances[1]!.animationLoop as () => void;
+      tick();
+      clock += 1500;
+      tick();
+
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log.mock.calls[0]![0]).toContain('[three-stats]');
+      handle.dispose();
+    } finally {
+      now.mockRestore();
+      log.mockRestore();
+      window.history.replaceState(null, '', '/');
+    }
+  });
+
+  it('releases textures along with geometry and materials on dispose', () => {
+    const handle = setup();
+    const disposeTexture = vi.spyOn(loaderState.lastTexture!, 'dispose');
+
+    handle.dispose();
+
+    expect(disposeTexture).toHaveBeenCalledTimes(1);
+    expect(rendererState.instances[0]!.animationLoop).toBeNull();
+    expect(rendererState.instances[0]!.disposed).toBe(true);
     expect(handle.scene.children.some((child) => child instanceof Mesh)).toBe(false);
   });
 });

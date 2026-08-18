@@ -5,6 +5,7 @@ import {
   Mesh,
   PerspectiveCamera,
   Scene,
+  Texture,
   Vector3,
   WebGLRenderer,
   type Material,
@@ -25,12 +26,32 @@ export interface ModelSceneOptions {
   onError?: (message: string) => void;
 }
 
+/** Counters for the optimization benchmark; cumulative since the scene was created. */
+export interface ModelSceneStats {
+  /** Animation loop invocations (one per browser frame while the scene is alive). */
+  ticks: number;
+  /** Frames actually handed to `renderer.render` — with on-demand drawing this trails `ticks`. */
+  frames: number;
+  /** Sum of `renderer.info.render.calls` over those frames. */
+  drawCalls: number;
+  /** Wall time spent inside `renderer.render`. */
+  renderMs: number;
+}
+
 export interface ModelSceneHandle {
   scene: Scene;
   camera: PerspectiveCamera;
   renderer: WebGLRenderer;
   controls: OrbitControls;
+  getStats: () => ModelSceneStats;
   dispose: () => void;
+}
+
+function disposeMaterial(material: Material): void {
+  for (const value of Object.values(material)) {
+    if (value instanceof Texture) value.dispose();
+  }
+  material.dispose();
 }
 
 function disposeObject(root: Object3D): void {
@@ -39,11 +60,17 @@ function disposeObject(root: Object3D): void {
     object.geometry.dispose();
     const material = object.material as Material | Material[];
     if (Array.isArray(material)) {
-      for (const entry of material) entry.dispose();
+      for (const entry of material) disposeMaterial(entry);
     } else {
-      material.dispose();
+      disposeMaterial(material);
     }
   });
+}
+
+/** Opt-in so the per-second measurement log never runs for ordinary users. */
+function statsLoggingEnabled(): boolean {
+  if (!import.meta.env.DEV) return false;
+  return new URLSearchParams(globalThis.location?.search ?? '').has('three-stats');
 }
 
 /**
@@ -93,6 +120,11 @@ export function createModelScene({
 
   let model: Object3D | null = null;
   let disposed = false;
+  let needsRender = true;
+  const requestRender = () => {
+    needsRender = true;
+  };
+  controls.addEventListener('change', requestRender);
 
   new GLTFLoader().load(
     modelUrl,
@@ -104,14 +136,44 @@ export function createModelScene({
       model = gltf.scene;
       frameModel(model, camera, controls);
       scene.add(model);
+      requestRender();
     },
     undefined,
     () => onError?.(MODEL_LOAD_ERROR_MESSAGE),
   );
 
+  const stats: ModelSceneStats = { ticks: 0, frames: 0, drawCalls: 0, renderMs: 0 };
+  const logStats = statsLoggingEnabled();
+  let windowStartedAt = performance.now();
+  let windowStart: ModelSceneStats = { ...stats };
+
   renderer.setAnimationLoop(() => {
+    stats.ticks += 1;
+    // `controls.update()` re-emits `change` while damping settles, which is what keeps the
+    // on-demand loop drawing until the camera comes to rest.
     controls.update();
-    renderer.render(scene, camera);
+    if (needsRender) {
+      needsRender = false;
+      const startedAt = performance.now();
+      renderer.render(scene, camera);
+      stats.frames += 1;
+      stats.drawCalls += renderer.info.render.calls;
+      stats.renderMs += performance.now() - startedAt;
+    }
+
+    if (!logStats) return;
+    const windowMs = performance.now() - windowStartedAt;
+    if (windowMs < 1000) return;
+    const perSecond = (value: number) => (value / (windowMs / 1000)).toFixed(1);
+    const frames = stats.frames - windowStart.frames;
+    console.info(
+      `[three-stats] ${modelUrl} — ticks/s ${perSecond(stats.ticks - windowStart.ticks)}, ` +
+        `rendered frames/s ${perSecond(frames)}, ` +
+        `draw calls/s ${perSecond(stats.drawCalls - windowStart.drawCalls)}, ` +
+        `avg render ${frames === 0 ? 0 : ((stats.renderMs - windowStart.renderMs) / frames).toFixed(3)}ms`,
+    );
+    windowStartedAt = performance.now();
+    windowStart = { ...stats };
   });
 
   return {
@@ -119,9 +181,11 @@ export function createModelScene({
     camera,
     renderer,
     controls,
+    getStats: () => ({ ...stats }),
     dispose: () => {
       disposed = true;
       renderer.setAnimationLoop(null);
+      controls.removeEventListener('change', requestRender);
       controls.dispose();
       if (model) {
         scene.remove(model);

@@ -2,9 +2,17 @@
 
 ## Current State
 
-- `monorepo-setup`/`shared-types`/`pipeline-canvas`/`rest-api`/`ws-protocol`/
-  `collab-canvas`/`ai-image-generation`/`generate-3d-preview` 8개 `passing` (8/9).
-  다음 우선순위는 `optimization-pass`(priority 9).
+- 9개 feature 전부 `passing` (9/9) — `feature_list.json` 완료.
+  `feature-loop/remaining-features` → `main` PR 생성 대상.
+- `optimization-pass`: Generate 3D 노드의 `apps/frontend/src/three/modelScene.ts`에
+  온디맨드 렌더링(OrbitControls `change` 이벤트 + 모델 로드 시에만 `render()`)을
+  적용해 유휴 상태 렌더 프레임/드로우콜을 120→1(-99.2%)로 줄였다. 머티리얼이 들고
+  있던 Texture를 `dispose()`가 놓치던 문제를 `disposeMaterial()`로 보완, 프레임
+  계측(`getStats()` + `?three-stats` 콘솔 로그)을 추가. 지오메트리/머티리얼 공유는
+  노드마다 독립 WebGL 컨텍스트라 원천적으로 불가능해 미적용(사유 기록). 번들:
+  `Generate3dNode`가 `ModelViewer`를 `React.lazy`로 로드해 초기 청크를
+  328.79kB→167.70kB(gzip, -49%)로 줄임. QA가 실브라우저로 idle 시 렌더 정지·5초+
+  무깜빡임·드래그 회전 매끄러움을 실측 재확인.
 - `generate-3d-preview`: image fan-in 선택 규칙(여러 `generateImage` → 하나의
   `generate3d`, 캔버스 좌표 정렬 후 첫 `ready` 이미지 사용)을 확정하고
   `apps/frontend/src/pipeline/fanIn.ts`로 텍스트/이미지 fan-in 정렬 로직을
