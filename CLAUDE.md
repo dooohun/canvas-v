@@ -45,3 +45,4 @@ pnpm test                    # Vitest (turbo run test)
 | 2026-07-27 | 초기 구성 (feature-implementer, qa-verifier 에이전트 + feature-loop 오케스트레이터) | 전체 | feature_list.json 기반 구현을 Ralph Loop로 자동 반복시키기 위한 하네스 구축 |
 | 2026-08-17 | main 직접 커밋 금지, `feature-loop/remaining-features` 브랜치 작업 + 9/9 passing 시 PR 자동 생성으로 변경. `.github/PULL_REQUEST_TEMPLATE.md` 추가 | feature-loop | 자동 구현 루프가 만드는 코드를 병합 전 사람이 반드시 리뷰하도록 하기 위함(사용자 요청) |
 | 2026-08-18 | qa-verifier 서브에이전트 모델을 opus → sonnet으로 변경(feature-implementer는 opus 유지) | feature-loop | QA 라운드가 토큰을 과도하게 소모해 비용 절감(사용자 요청) |
+| 2026-08-18 | feature-implementer 서브에이전트 모델도 opus → sonnet으로 변경(이제 둘 다 sonnet) | feature-loop | 추가 비용 절감(사용자 요청) |

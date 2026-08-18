@@ -93,8 +93,8 @@ jq -n -c \
 | feature-implementer | `feature-implementer` (커스텀) | 배정된 feature 구현 | 코드 변경 + 구현 요약 |
 | qa-verifier | `qa-verifier` (커스텀) | verification 항목 실제 실행·검증 | 검증 리포트 + evidence 초안 |
 
-`Agent` 도구 호출 시 feature-implementer는 `model: "opus"`, qa-verifier는
-`model: "sonnet"`을 명시한다(토큰 비용 절감을 위해 QA는 sonnet으로 낮춤 — 사용자 요청,
+`Agent` 도구 호출 시 feature-implementer, qa-verifier 둘 다 `model: "sonnet"`을
+명시한다(토큰 비용 절감을 위해 QA에 이어 implementer도 sonnet으로 낮춤 — 사용자 요청,
 2026-08-18).
 
 ## 워크플로우
@@ -142,7 +142,7 @@ jq -n -c \
 Agent(
   name: "feature-implementer",
   subagent_type: "feature-implementer",
-  model: "opus",
+  model: "sonnet",
   run_in_background: true,
   prompt: "{선택된 feature 객체 전체(JSON)} + 관련 docs 경로 목록 + session-handoff.md/claude-progress.md 요약. '이 feature를 구현하고, 완료되면 qa-verifier에게 SendMessage로 변경 파일 목록과 verification 항목별 확인 방법을 알려라' 지시."
 )
