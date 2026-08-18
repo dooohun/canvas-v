@@ -1,79 +1,87 @@
 # Session Handoff
 
-## Last Session: 2026-08-17 (feature-loop 하네스 실행 — collab-canvas)
+## Last Session: 2026-08-18 (feature-loop 하네스 실행 — ai-image-generation)
 
 ### What Was Accomplished
 
-- `ws-protocol`(priority 5) 구현 완료(이전 세션, feature-loop 하네스 첫 실행 테스트) —
-  `apps/backend/src/ws-server.ts`를 room별 Y.Doc 릴레이로 전면 구현. Commit: `4233faa`.
-- `feature-loop` 하네스의 브랜치 전략 변경 — 지금부터 `main`에 직접 커밋하지 않고
-  `feature-loop/remaining-features` 브랜치에서 작업, 9/9 feature `passing` 시 그 브랜치를
-  `main`으로 향하는 PR로 한 번만 올림(사용자가 직접 리뷰 후 merge). 자동 구현 루프가 만든
-  코드를 사람이 반드시 리뷰하게 하기 위한 사용자 요청. `.github/PULL_REQUEST_TEMPLATE.md`
-  신규 작성(웹의 PR 템플릿 베스트프랙티스 참고 — Summary/포함된 feature/리뷰어가 특히 봐야
-  할 곳/검증 방법/브레이킹 체인지 5개 섹션, "리뷰어가 특히 봐야 할 곳"에 implementer·QA가
-  남긴 미확인/임시방편 항목을 강제로 옮겨 적도록 함).
-- `collab-canvas`(priority 6) 구현 완료 — `pipeline-canvas`의 로컬 `usePipelineState`
-  (useState 기반)를 Y.Doc(nodes/edges `Y.Map<Y.Map>`) 단일 진실 소스로 전환.
-  `apps/frontend/src/collab/`에 `YjsWebSocketProvider.ts`(docs/ws-protocol.md 커스텀
-  envelope을 직접 배관, y-websocket 미사용, 인코딩은 전량 `y-protocols`/`lib0`),
-  `pipelineDoc.ts`(Y.Map CRUD, 노드 삭제+고아 엣지 정리를 `doc.transact` 1건으로),
-  awareness(선택 노드 + 커서) 공유용 `CollabContext`/`useCollabRoom`/`usePresence` 신규.
-  `apps/backend`는 한 줄도 수정하지 않음(ws-protocol이 이미 이 프로토콜을 구현해뒀음).
-  QA가 재연결 시 무한 재귀(RangeError)로 프로세스가 죽는 결함 1건을 발견 →
-  `onerror`의 `socket.close()`를 `this.handleDisconnect()`로 교체해 수정, 회귀 테스트
-  추가(QA가 독립적으로 수정을 되돌려 테스트가 실제로 실패하는 것까지 확인).
-  `docs/acceptance-criteria.md`의 협업 시나리오 1~5를 사전조건/조작순서/기대결과/자동화
-  가능 여부로 신규 작성. Commit: `0e0f131`(브랜치 `feature-loop/remaining-features`).
-- `collab-canvas.status` → `passing`(`feature_list.json` evidence 참고).
+- `ai-image-generation`(priority 7) 구현 완료 — Text Prompt 노드를 Generate Image
+  노드에 연결하고 실행하면 REST API로 이미지가 생성되고 결과가 Y.Doc에 반영되어
+  협업 중인 모든 피어에게 실시간으로 보인다(status: pending → ready/error).
+- fan-in 조합 규칙 확정: 연결된 Text Prompt들의 prompt를 trim 후 빈 값 제외, 캔버스
+  좌표(위→아래, 왼→오른쪽) + 노드 id 사전순 정렬 후 개행으로 결합. 엣지 생성 순서가
+  아니라 좌표를 쓰는 이유는 모든 피어가 같은 문자열을 만들어야 하기 때문
+  (`docs/architecture.md` '여러 입력(fan-in) 조합 규칙').
+- `apps/frontend/src/pipeline/{promptComposition,runState,useNodeExecution}.ts` +
+  `src/api/`(REST 호출) 신규, `GenerateImageNode.tsx`/`PipelineCanvas.tsx`에 연결.
+  실행 상태는 전부 Y.Doc(Y.Map)에만 기록 — 별도 JS 상태로 중복 관리하지 않음.
+- QA 1차 지적 2건을 feature-implementer가 수정:
+  1. **pending 영구 고착** — 실행 시작 시 노드에 `pendingRun={clientId,startedAt}`을
+     함께 기록. 소유자가 awareness에서 사라지거나 타임아웃(2분)을 넘긴 실행은
+     '버려진 실행'으로 보아 다른 피어가 회수해 재실행할 수 있게 함
+     (`docs/architecture.md` '실행 상태(pending) 소유권과 회수'). 요청에도
+     `AbortController` 타임아웃을 추가해 매달린 요청이 스스로 error로 끝나게 함.
+  2. **`.env` 미로드** — `apps/backend`가 `.env`를 읽지 않아 실 키가 있어도 성공
+     경로에 도달 못하던 배선 누락. `src/index.ts`에서 `process.loadEnvFile`로 로드
+     (테스트가 `app.ts`를 직접 import해 오염되지 않도록 `index.ts`에 둠), 키 미설정
+     시 기동 경고 출력, `apps/backend/.env.example` 신규 추가.
+- QA 2차 재검증(이전 QA 결과를 신뢰하지 않고 코드 재독해 + 실기동으로 재확인):
+  두 수정 모두 실제 해소 확인. 회수 경로는 `PipelineCanvas.test.tsx`의 "소유자 이탈
+  → 안내 노출 → 재실행 → ready" / "소유자 생존 시 버튼 잠금 유지" 테스트로 커버.
+  `.env` 배선은 실제 `apps/backend` 기동으로 키 유무에 따라 경고가 나타나고
+  사라지는 것, 로드된 키가 OpenAI에 실제 도달하는 것(무과금 요청)까지 확인.
+  이 과정에서 `docs/acceptance-criteria.md` 시나리오 11(1)의 기대 문구가 실제 Vite
+  dev 프록시 동작(backend가 죽으면 프록시가 ECONNREFUSED를 가로채 본문 없는 500 →
+  폴백 문구 "이미지 생성에 실패했습니다" 노출, "서버에 연결할 수 없습니다"가 아님)과
+  달랐던 것을 QA가 발견해 환경별 분기 서술로 문서를 수정.
+- `ai-image-generation.status` → `passing`(`feature_list.json` evidence 참고).
 
 ### What Remains
 
-- `ai-image-generation`(priority 7) — 다음 대상. `docs/acceptance-criteria.md` 시나리오
-  6~8·10~11을 이 feature 범위에서 작성해야 함. fan-in(여러 Text Prompt가 한 Generate
-  Image에 연결) 시 프롬프트 병합 규칙이 미정 — 이 feature에서 확정 필요.
-- `generate-3d-preview`(priority 8), `optimization-pass`(priority 9)는 아직 시작 전.
-- 9/9 전부 passing이 되기 전까지는 PR을 만들지 않는다(하네스 규칙). 현재 6/9 passing.
-- `rest-api`의 실제 `OPENAI_API_KEY`/`MESHY_API_KEY`를 넣은 성공 경로(200)는 여전히
-  미검증 — 실제 키가 주입된 환경에서 수동 확인 필요.
+- `generate-3d-preview`(priority 8) — 다음 대상. `docs/architecture.md` '열린 질문'
+  (이미지를 고정 3D 모델에 텍스처로 매핑할지, 별도 image-to-3D API를 쓸지)은 이미
+  확정됨(Meshy AI, `rest-api` feature에서 결정) — 이 feature는 그 결과를 Three.js로
+  노드 안에서 렌더링(OrbitControls)하는 프론트엔드 작업.
+- `optimization-pass`(priority 9)는 `generate-3d-preview`에 의존, 아직 시작 전.
+- 9/9 전부 passing이 되기 전까지는 PR을 만들지 않는다(하네스 규칙). 현재 7/9 passing.
+- `ai-image-generation`의 실 API 키 종단 성공 경로(실제 200 + 이미지 표시)는 이
+  세션에서 쓴 OpenAI 계정이 billing hard limit 상태라 미검증(키 로딩·요청 도달
+  자체는 확인됨) — 크레딧이 있는 환경에서 수동 확인 필요.
+- `docs/api-spec.md`가 OpenAI 호출에 `response_format: "b64_json"`을 명시하지만
+  `openaiClient.ts`는 이 파라미터를 보내지 않음(`gpt-image-1`은 b64가 기본이라 코드가
+  맞고 문서가 낡음, `rest-api` feature에서 넘어온 서술 오류) — 후속 정리 필요.
 
 ### Decisions Made
 
-- (이전 세션 결정, 유효함) 전역 상태 최소화, React Flow 재조정은 렌더링 중 상태 조정
-  패턴 사용. REST 유지(GraphQL 기각). Generate 3D는 서버가 Meshy AI 호출.
-- **브랜치 전략**: `main` 직접 커밋 중단, `feature-loop/remaining-features`에서 작업 후
-  9/9 passing 시 PR 1개로 통합(사용자 요청 — 자동 구현 루프의 산출물을 반드시 사람이
-  리뷰하게 하기 위함). feature마다 PR을 열지 않는 이유: 자동 루프 특성상 중간 산출물에
-  리팩터링이 덜 끝난 코드가 섞이기 쉬워서, 리뷰는 전체가 끝난 뒤 한 번에 받는 게 낫다고
-  판단.
-- **Yjs 클라이언트는 y-websocket을 쓰지 않는다**: 서버가 커스텀 프로토콜(docs/ws-protocol.md)
-  이므로 클라이언트도 그 envelope에 맞춰 직접 배관해야 함. 단 바이너리 인코딩 자체는
-  반드시 `y-protocols`/`lib0` 함수로만 생성(CLAUDE.md 절대 규칙).
-- **동시 편집 충돌 처리 기본값**: 같은 필드(예: 같은 텍스트 노드의 prompt)를 동시 타이핑하면
-  필드 단위 Last-Write-Wins로 병합됨(Yjs Y.Map의 기본 동작). 문자 단위 병합이 필요해지면
-  `Y.Text`로 승격 — 이번 범위에서는 하지 않음(후속 과제로 `feature_list.json`의
-  `collab-canvas.notes`에 기록).
-- (이전 세션 결정, 유효함) 진행 로그 관리 방식: `claude-progress.md`는 상태 스냅샷 위주,
-  "왜" 판단은 이 파일의 "Decisions Made"에 남김.
+- **fan-in 프롬프트 조합은 캔버스 좌표 기준 정렬**(엣지 생성 순서 아님) — 모든 피어가
+  결정론적으로 같은 결합 문자열을 만들어야 하므로. 좌표가 같으면 노드 id 사전순으로
+  타이브레이크.
+- **pending 실행의 소유권은 awareness + 타임아웃으로 판정**: 별도의 서버측 락이나
+  중앙 조정 없이, 클라이언트가 Y.Doc에 기록한 소유자 정보와 Yjs awareness의
+  outdated 처리를 조합해 "버려진 실행"을 판정. 서버는 여전히 상태를 해석하지 않는다
+  (CLAUDE.md 절대 규칙 유지).
+- **`.env` 로드는 `app.ts`가 아닌 `index.ts`에서** — Supertest 테스트가 `createApp()`을
+  직접 import해서 쓰므로, 로드 위치를 엔트리포인트에만 둬야 테스트가 개발자의 로컬
+  `.env`에 우연히 의존하지 않는다.
+- (이전 세션 결정, 유효함) `main` 직접 커밋 중단, `feature-loop/remaining-features`에서
+  작업 후 9/9 passing 시 PR 1개로 통합. Yjs 클라이언트는 y-websocket 미사용(커스텀
+  envelope 직접 배관, 인코딩만 `y-protocols`/`lib0`). 진행 로그는 `claude-progress.md`
+  상태 스냅샷 + 이 파일의 "Decisions Made"에 "왜"를 남기는 방식 유지.
 
 ### Files Modified
 
-- `apps/frontend/src/collab/`(신규: `pipelineDoc.ts`, `YjsWebSocketProvider.ts`,
-  `CollabContext.tsx`, `useCollabRoom.ts`, `localIdentity.ts`, `usePresence.ts`,
-  `__tests__/{pipelineDoc,YjsWebSocketProvider}.test.ts` + 헬퍼)
-- `apps/frontend/src/components/pipeline/{PresenceBar,RemoteCursors}.tsx`(신규),
-  `PipelineCanvas.tsx`(ReactFlowProvider 래핑, awareness 발행, presence UI),
-  `TextPromptNode.tsx`(textarea에 `nodrag` 추가 — pipeline-canvas 시절부터 있던 회귀
-  버그를 이번에 발견해 함께 수정)
-- `apps/frontend/src/pipeline/usePipelineState.ts`(useState 제거, `useSyncExternalStore`
-  + `observeDeep`), `reactFlowAdapter.ts`(원격 좌표 반영 버그 수정)
-- `docs/acceptance-criteria.md`(협업 시나리오 1~5 신규 작성)
-- `turbo.json`(`globalEnv`에 `VITE_WS_URL`, `DEV` 추가)
-- `.github/PULL_REQUEST_TEMPLATE.md`(신규), `.claude/skills/feature-loop/SKILL.md`
-  (브랜치 전략 + 완료 시 PR 자동 생성 절차 추가), `CLAUDE.md`(하네스 변경 이력),
-  `.claude/observability/feature-loop.jsonl`(신규, feature-loop 실행 이벤트 로그)
-- `feature_list.json`(`collab-canvas` 항목 `passing` 전환), `session-handoff.md`,
-  `claude-progress.md`
+- `apps/frontend/src/pipeline/{promptComposition.ts, runState.ts, useNodeExecution.ts}`
+  (신규) + 각 `__tests__/`
+- `apps/frontend/src/api/`(신규 디렉터리, REST 호출 + `__tests__/generation.test.ts`)
+- `apps/frontend/src/components/pipeline/{GenerateImageNode,PipelineCanvas}.tsx`,
+  `__tests__/PipelineCanvas.test.tsx`(pending 회수 시나리오 테스트 추가)
+- `apps/frontend/src/pipeline/reactFlowAdapter.ts`, `apps/frontend/vite.config.ts`
+- `apps/frontend/src/collab/pipelineDoc.ts` + `__tests__/pipelineDoc.test.ts`
+- `apps/backend/src/index.ts`(`.env` 로드 배선), `apps/backend/.env.example`(신규)
+- `packages/shared-types/src/{index.ts,node.ts}`(실행 상태 관련 타입)
+- `docs/{acceptance-criteria.md,api-spec.md,architecture.md,data-model.md}`
+- `apps/{backend,frontend}/src/__tests__/shared-types.test.ts`
+- `feature_list.json`(`ai-image-generation` 항목 `passing` 전환), `session-handoff.md`,
+  `claude-progress.md`, `.claude/observability/feature-loop.jsonl`
 
 ### Blockers
 
@@ -81,9 +89,9 @@
 
 ### Next Steps
 
-1. `ai-image-generation`(priority 7) feature 구현 — `feature-loop` 스킬 호출로 진행.
-   `docs/acceptance-criteria.md` 시나리오 6~8·10~11 작성 + fan-in 프롬프트 병합 규칙
-   확정이 이 feature 범위.
+1. `generate-3d-preview`(priority 8) feature 구현 — `feature-loop` 스킬 호출로 진행.
+   `docs/acceptance-criteria.md`의 3D 시나리오(9번, 아직 TODO) 작성이 이 feature 범위.
 2. 9/9 passing 도달 시 `feature-loop` 하네스가 자동으로 `feature-loop/remaining-features`
    → `main` PR을 생성한다 — 그 전까지는 PR 없음.
-3. `rest-api`의 실제 API 키 종단 검증은 여전히 별도로 필요.
+3. `ai-image-generation`의 실 API 키 종단 검증(billing 문제 해소 후)과
+   `docs/api-spec.md`의 `response_format` 서술 정리는 별도로 필요.

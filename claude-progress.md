@@ -3,8 +3,16 @@
 ## Current State
 
 - `monorepo-setup`/`shared-types`/`pipeline-canvas`/`rest-api`/`ws-protocol`/
-  `collab-canvas` 6개 `passing` (6/9). 다음 우선순위는 `ai-image-generation`
-  (priority 7).
+  `collab-canvas`/`ai-image-generation` 7개 `passing` (7/9). 다음 우선순위는
+  `generate-3d-preview`(priority 8).
+- `ai-image-generation`: `apps/frontend/src/pipeline/{promptComposition,runState,
+  useNodeExecution}.ts` + `src/api/`로 fan-in 프롬프트 조합·실행 상태·API 호출을
+  구현. 실행 상태(`pending`/`ready`/`error`)는 Y.Doc에만 기록되어 협업 중인 모든
+  피어에게 실시간으로 보인다. pending 실행은 소유자 `clientId`+`startedAt`을 함께
+  기록해, 소유자가 awareness에서 사라지거나 타임아웃(2분)을 넘기면 다른 피어가
+  회수해 재실행할 수 있다. `apps/backend/src/index.ts`가 `.env`를 로드하도록 배선
+  (`process.loadEnvFile`, `.env.example` 추가) — 이전엔 실 키가 있어도 로드되지
+  않던 결함이었음.
 - **브랜치 전략(2026-08-17부터)**: `main`에 직접 커밋하지 않는다. 남은 feature는
   전부 `feature-loop/remaining-features` 브랜치에서 작업하고, 9/9 passing이 되면
   그 브랜치를 `main`으로 향하는 PR 1개로 올린다(사용자가 리뷰 후 merge). PR 본문은
@@ -20,8 +28,8 @@
   `POST /api/upload`, `GET /uploads/:filename`이 구현됨(`GET /health`는 기존).
   외부 API 클라이언트(`openaiClient`/`meshyClient`)는 테스트에서 전부 mock 처리 —
   실제 키를 쓴 성공 경로는 이 환경에서 미검증.
-- `docs/acceptance-criteria.md`는 협업 시나리오 1~5까지 작성 완료, 생성/3D 시나리오
-  6~11은 여전히 TODO.
+- `docs/acceptance-criteria.md`는 협업 시나리오 1~5 + 생성 시나리오 6, 7, 8, 10, 11
+  작성 완료. 3D 시나리오(9)만 TODO(`generate-3d-preview` 범위).
 - `apps/frontend`는 Tailwind v4 + shadcn/ui + `@xyflow/react` 세팅 완료
   (`components.json`, `src/lib/utils.ts`, `@/*` 경로 별칭).
 - 표준 검증: `./init.sh` (`pnpm install` → `pnpm turbo run build lint check-types test`).
@@ -39,6 +47,12 @@
 - `/api/generate-3d`는 이미지 하나만 받는 계약 — fan-in(여러 Generate Image 노드가
   한 Generate 3D 노드에 연결)일 때 조합 방식은 `ai-image-generation`/
   `generate-3d-preview` feature에서 확정해야 함(`docs/architecture.md` "열린 질문").
+- `ai-image-generation`의 실 API 키 종단 성공 경로(실제 200 + 이미지 표시)는
+  이 세션에서 사용한 OpenAI 계정이 billing hard limit 상태라 미검증(키 로딩·요청
+  도달 자체는 확인됨) — 크레딧이 있는 환경에서 수동 확인 필요.
+- `docs/api-spec.md`가 OpenAI 호출에 `response_format: "b64_json"`을 명시하지만
+  `openaiClient.ts`는 이 파라미터를 보내지 않음(`gpt-image-1`은 b64가 기본이라 코드가
+  맞고 문서가 낡음, `rest-api` feature에서 넘어온 서술) — 후속 정리 필요.
 
 ## Session Log
 
@@ -151,3 +165,29 @@ Yjs WebSocket 클라이언트(`YjsWebSocketProvider.ts`, y-websocket 미사용, 
 `docs/acceptance-criteria.md` 협업 시나리오 1~5 신규 작성. `collab-canvas.status` →
 `passing`. Commit: `0e0f131`(브랜치 `feature-loop/remaining-features`). 전체 진행률
 6/9 passing, 다음 대상 `ai-image-generation`(priority 7).
+
+### Session 014 (2026-08-18, feature-loop 하네스 — ai-image-generation)
+
+`ai-image-generation`(priority 7) 구현 — fan-in 조합 규칙(연결된 Text Prompt들을
+캔버스 좌표 기준 정렬 후 개행으로 결합, 모든 피어가 동일 결과를 내도록 좌표 사용)을
+`docs/architecture.md`에 확정하고 `apps/frontend/src/pipeline/promptComposition.ts`로
+구현. `runState.ts`(pending/ready/error 상태 판정 + 소유권/타임아웃 회수 로직),
+`useNodeExecution.ts`(실행 트리거), `src/api/`(REST 호출)를 신규 작성해
+`GenerateImageNode`/`PipelineCanvas`에 연결. 실행 상태는 전부 Y.Doc에만 기록.
+
+QA 1차 지적 2건: (1) pending이 영구 고착되어 복구 경로가 없음, (2) `apps/backend`가
+`.env`를 로드하지 않아 실 키가 있어도 성공 경로에 도달 불가. feature-implementer가
+pending에 `{clientId, startedAt}`을 기록하고 소유자 awareness 이탈/타임아웃(2분) 시
+다른 피어가 회수해 재실행할 수 있게 수정, `AbortController` 요청 타임아웃 추가,
+`src/index.ts`에 `process.loadEnvFile` 배선 + `.env.example` 신규 추가로 해결.
+
+QA 2차 재검증(이전 QA 결과를 신뢰하지 않고 코드 재독해 + 재실기동): 두 수정 모두 실제
+해소 확인(회수 경로는 `PipelineCanvas.test.tsx`의 "소유자 이탈 → 재실행 → ready" /
+"소유자 생존 시 잠금 유지" 테스트로, `.env` 배선은 실제 `apps/backend` 기동으로 키 유무에
+따라 경고가 나타나고 사라지는 것까지 확인). 이 과정에서 `docs/acceptance-criteria.md`
+시나리오 11(1)의 기대 문구가 실제 Vite dev 프록시 동작(ECONNREFUSED를 프록시가 가로채
+본문 없는 500 → 폴백 문구 노출)과 달랐던 것을 QA가 발견해 환경별 분기 서술로 수정.
+`ai-image-generation.status` → `passing`(`feature_list.json` evidence 참고). 실 API
+키 종단 성공 경로(200 응답)는 이 세션에서 쓴 OpenAI 계정이 billing hard limit 상태라
+미검증(키 로딩·요청 도달 자체는 무과금 요청으로 확인) — Known Issues 참고. 전체 진행률
+7/9 passing, 다음 대상 `generate-3d-preview`(priority 8).

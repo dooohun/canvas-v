@@ -58,11 +58,18 @@ awareness(커서/선택 상태)는 Y.Doc에 넣지 않는다. `y-protocols/aware
 | `status` | `NodeStatus`(`"idle" \| "pending" \| "ready" \| "error"`) | 실행 상태 |
 | `imageUrl` | `string \| null` | 생성된 이미지 URL. `status`가 `"ready"`가 아니면 `null` |
 | `errorMessage` | `string \| null` | `status`가 `"error"`일 때만 값이 있음 |
+| `pendingRun` | `{ clientId: number; startedAt: number } \| null` | 실행 중인 요청의 소유자(Yjs clientID)와 시작 시각. `status`가 `"pending"`일 때만 값이 있음 |
+
+`pendingRun`이 필요한 이유: `pending`을 끝낼 수 있는 것은 요청을 들고 있는 클라이언트뿐이므로,
+그 클라이언트가 사라지면 노드가 영원히 `pending`으로 남는다. 소유자를 같이 기록해 두면 다른
+피어가 awareness로 "이 실행은 주인이 없다"를 판별해 회수할 수 있다
+(`docs/architecture.md` "실행 상태(pending) 소유권과 회수").
 
 입력 텍스트는 이 노드에 저장하지 않는다. 실행 시점에 들어오는 엣지를 따라 연결된
 `textPrompt` 노드들의 `prompt` 값을 읽어 조합한다(값을 복제해서 들고 있으면 원본이 바뀔 때
-동기화가 깨진다 — 상태 중복 금지 규칙). 여러 개가 연결됐을 때 정확히 어떻게 합치는지는
-아직 미정(`docs/architecture.md`의 "열린 질문" 참고).
+동기화가 깨진다 — 상태 중복 금지 규칙). 여러 개가 연결됐을 때 합치는 규칙은
+`docs/architecture.md`의 "여러 입력(fan-in) 조합 규칙"에서 확정했다(캔버스 좌표 순으로 정렬해
+개행으로 이어붙임).
 
 ### `type: "generate3d"`
 
@@ -71,6 +78,7 @@ awareness(커서/선택 상태)는 Y.Doc에 넣지 않는다. `y-protocols/aware
 | `status` | `NodeStatus` | 실행 상태 |
 | `modelUrl` | `string \| null` | 생성된 3D 에셋 URL. `status`가 `"ready"`가 아니면 `null` |
 | `errorMessage` | `string \| null` | `status`가 `"error"`일 때만 값이 있음 |
+| `pendingRun` | `{ clientId: number; startedAt: number } \| null` | `generateImage`와 동일한 실행 소유권 필드 |
 
 출력 포트가 없는 터미널 노드다. `docs/architecture.md`에서 확정한 대로, 서버가 Meshy AI
 (image-to-3D)를 호출해 3D 에셋을 생성하고 그 URL을 `modelUrl`에 담는다.
@@ -97,9 +105,8 @@ awareness(커서/선택 상태)는 Y.Doc에 넣지 않는다. `y-protocols/aware
 - **fan-out 허용**: 한 노드의 출력 포트에서 여러 엣지로 분기할 수 있다(하나의 `textPrompt`가
   여러 `generateImage`에 연결).
 - **fan-in 허용(확정)**: 한 노드의 입력 포트에 여러 엣지가 들어올 수 있다(여러 `textPrompt`가
-  한 `generateImage`에, 또는 여러 `generateImage`가 한 `generate3d`에 연결). 실제로 여러 입력을
-  어떻게 조합해서 실행할지는 `docs/architecture.md`의 "열린 질문"으로 남겨둠 — 데이터 모델
-  수준에서는 허용하는 것으로 확정.
+  한 `generateImage`에, 또는 여러 `generateImage`가 한 `generate3d`에 연결). 여러 입력을 실행
+  시점에 어떻게 조합하는지는 `docs/architecture.md`의 "여러 입력(fan-in) 조합 규칙" 참고.
 - 이 연결 규칙은 **클라이언트에서만** 검증한다(React Flow의 연결 유효성 검사). 서버는 이 규칙을
   전혀 모른다 — `docs/architecture.md`의 "서버는 도메인 구조를 들여다보지 않는다" 규칙.
 
@@ -164,7 +171,7 @@ export type WsMessageType = (typeof WS_MESSAGE_TYPE)[keyof typeof WS_MESSAGE_TYP
 backend는 이 타입들로 검증용 테스트 픽스처를 만든다). **옛 `CanvasObject`/`GraphNode`/
 `GraphEdge`는 없앤다** — 아래 이름으로 대체:
 
-- `NodeType`(`"textPrompt" | "generateImage" | "generate3d"`), `NodeStatus`(`"idle" | "pending" | "ready" | "error"`) — 1번 섹션
+- `NodeType`(`"textPrompt" | "generateImage" | "generate3d"`), `NodeStatus`(`"idle" | "pending" | "ready" | "error"`), `NodeRunState`(`pendingRun` 필드의 타입) — 1번 섹션
 - `TextPromptNode`, `GenerateImageNode`, `Generate3dNode` — 1번 섹션 타입별 필드. 셋을 묶은
   판별 유니언 `PipelineNode = TextPromptNode | GenerateImageNode | Generate3dNode`도 함께 export
 - `PortDataType`(`"text" | "image"`), `NODE_PORTS`(노드 타입 → 입출력 포트 타입 조회용 상수

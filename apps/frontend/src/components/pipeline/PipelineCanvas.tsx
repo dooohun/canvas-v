@@ -17,6 +17,9 @@ import type { AwarenessState } from '@repo/shared-types';
 import { useCollab } from '@/collab/CollabContext';
 import { groupSelectorsByNodeId, useLocalPresence, useRemotePresence } from '@/collab/usePresence';
 import { usePipelineState } from '@/pipeline/usePipelineState';
+import { useNodeExecution } from '@/pipeline/useNodeExecution';
+import { composeInputPromptsByNodeId } from '@/pipeline/promptComposition';
+import { collectAbandonedRunNodeIds } from '@/pipeline/runState';
 import {
   reconcileFlowNodes,
   toReactFlowEdges,
@@ -57,30 +60,65 @@ function PipelineCanvasInner() {
     addEdge,
     deleteEdge,
   } = usePipelineState();
+  const { runGenerateImage } = useNodeExecution();
   const remotePresence = useRemotePresence();
   const { setSelectedNodeId, setCursor } = useLocalPresence();
   const { screenToFlowPosition } = useReactFlow();
 
   const localState = awareness.getLocalState() as AwarenessState | null;
   const selectorsByNodeId = useMemo(() => groupSelectorsByNodeId(remotePresence), [remotePresence]);
+  const inputPromptByNodeId = useMemo(
+    () => composeInputPromptsByNodeId(nodes, edges),
+    [nodes, edges],
+  );
+  const abandonedRunNodeIds = useMemo(() => {
+    const activeClientIds = new Set([
+      awareness.clientID,
+      ...remotePresence.map((state) => state.clientId),
+    ]);
+    return collectAbandonedRunNodeIds(nodes, activeClientIds);
+  }, [nodes, remotePresence, awareness]);
 
-  const nodeHandlers = useMemo(
-    () => ({ onChangePrompt: updateTextPromptValue, onDeleteNode: deleteNode }),
-    [updateTextPromptValue, deleteNode],
+  const handleRunNode = useCallback(
+    (id: string) => {
+      void runGenerateImage(id);
+    },
+    [runGenerateImage],
+  );
+
+  const reconcileContext = useMemo(
+    () => ({
+      handlers: {
+        onChangePrompt: updateTextPromptValue,
+        onDeleteNode: deleteNode,
+        onRunNode: handleRunNode,
+      },
+      selectorsByNodeId,
+      inputPromptByNodeId,
+      abandonedRunNodeIds,
+    }),
+    [
+      updateTextPromptValue,
+      deleteNode,
+      handleRunNode,
+      selectorsByNodeId,
+      inputPromptByNodeId,
+      abandonedRunNodeIds,
+    ],
   );
 
   // Reconciled during render, not in a useEffect: an Effect would commit the stale list first
   // and only patch it in on a second render pass, causing a visible flicker/lag on every change.
   const [flowNodes, setFlowNodes, onFlowNodesChangeInternal] = useNodesState<
     Node<PipelineNodeData>
-  >(reconcileFlowNodes(nodes, [], nodeHandlers, selectorsByNodeId));
-  const prevInputsRef = useRef({ nodes, selectorsByNodeId });
+  >(reconcileFlowNodes(nodes, [], reconcileContext));
+  const prevInputsRef = useRef({ nodes, reconcileContext });
   if (
     prevInputsRef.current.nodes !== nodes ||
-    prevInputsRef.current.selectorsByNodeId !== selectorsByNodeId
+    prevInputsRef.current.reconcileContext !== reconcileContext
   ) {
-    prevInputsRef.current = { nodes, selectorsByNodeId };
-    setFlowNodes((current) => reconcileFlowNodes(nodes, current, nodeHandlers, selectorsByNodeId));
+    prevInputsRef.current = { nodes, reconcileContext };
+    setFlowNodes((current) => reconcileFlowNodes(nodes, current, reconcileContext));
   }
 
   const flowEdges = useMemo(() => toReactFlowEdges(edges), [edges]);

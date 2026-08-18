@@ -141,12 +141,14 @@
       "area": "apps/frontend + apps/backend",
       "title": "Generate Image 노드 실행 플로우",
       "user_visible_behavior": "사용자가 Text Prompt 노드를 Generate Image 노드에 연결하고 실행하면, REST API를 통해 이미지가 생성되고 그 결과가 Generate Image 노드에 반영된다(status: pending → ready/error).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "docs/acceptance-criteria.md의 생성 시나리오(재작성 필요, 옛 시나리오 6~8·10~11에 대응)를 순서대로 수동 실행해 확인한다."
+        "docs/acceptance-criteria.md 시나리오 6, 7, 8, 10, 11을 순서대로 수동 실행해 확인한다(각 시나리오의 '자동화 가능 여부'에 적힌 Vitest 테스트가 자동화 커버 범위)."
       ],
-      "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태. rest-api, pipeline-canvas에 의존. 여러 Text Prompt 노드가 fan-in으로 연결됐을 때 프롬프트를 어떻게 합치는지는 docs/architecture.md '열린 질문'으로 미정 — 이 feature 구현 시 확정 필요."
+      "evidence": [
+        "2026-08-18 재검증(2회차): pnpm turbo run build lint check-types test 15/15 통과(frontend 63 tests, backend 31 tests). 1차 지적 2건 해소 확인 — (a) pending 고착: runState.ts의 소유자 이탈/타임아웃 판정과 PipelineCanvas의 awareness 연동으로 회수 경로가 열렸고, PipelineCanvas.test.tsx가 '소유자 이탈 → 안내 노출 → 재실행 → ready'와 '소유자 생존 시 버튼 잠금'을 함께 검증(시나리오 8(2)(7), 11 마지막 항목). (b) .env 배선: apps/backend를 실제 기동해 .env 존재 시 OPENAI_API_KEY 경고 소멸, .env 제거 시 경고 재출현을 확인했고, 로드된 키가 OpenAI에 실제 도달함을 무과금 요청으로 확인. 실서버 + Vite 프록시 경유로 POST /api/generate-image 502 {\"error\":\"image generation failed\"}, 빈 prompt 400, /uploads 200 image/png, 경로순회 404를 실측했고 응답 본문에 API 키 없음(시나리오 10(2), 11(2)). 이번 재검증에서 시나리오 11(1) 기대문구가 dev 프록시 실제 동작과 달라 docs/acceptance-criteria.md를 환경별 분기 서술로 수정. 서버 코드에 도메인 타입 미등장, 실행 상태는 Y.Doc에만 기록됨을 grep으로 재확인."
+      ],
+      "notes": "fan-in 조합 규칙 확정(2026-08-17): 연결된 textPrompt들의 prompt를 trim해 빈 값 제외 후, 캔버스 좌표 위→아래, 왼→오른쪽, 노드 id 사전순으로 정렬해 개행(\\n)으로 이어붙인다. 엣지 생성 순서가 아니라 좌표를 쓰는 이유는 모든 피어가 같은 문자열을 만들어야 하기 때문. docs/architecture.md '여러 입력(fan-in) 조합 규칙'에 기록. 입력 없음 처리: 조합 결과가 빈 문자열이면 실행 버튼을 비활성화하고 노드에 안내 문구를 노출한다(방어적으로 실행이 호출되면 API 호출 없이 status=error + 안내 메시지). 실행 상태는 전부 Y.Doc(Y.Map)에만 기록해 협업 중인 다른 사용자에게도 pending/ready/error가 실시간으로 보인다. dev에서는 Vite 프록시(/api, /uploads → :3001)로 same-origin 유지 — backend에 CORS 추가 불필요. 실제 OPENAI_API_KEY가 없어 종단(실제 이미지 생성) 경로는 미검증, mock 기반 전이/에러 처리만 자동 검증됨. | QA 1차 지적 반영(2026-08-17): (1) pending 고착 결함 — 실행 시작 시 노드에 pendingRun={clientId,startedAt}를 함께 기록하고, 소유자가 awareness에서 사라졌거나 타임아웃을 넘긴 실행은 '버려진 실행'으로 보아 남은 피어가 재실행할 수 있게 했다(docs/architecture.md '실행 상태(pending) 소유권과 회수'). 생성 요청에도 AbortController 타임아웃(2분)을 추가해 매달린 요청이 스스로 error로 끝나게 했다. (2) backend가 apps/backend/.env를 읽지 않던 배선 누락 — src/index.ts에서 process.loadEnvFile로 로드하고 키 미설정 시 기동 경고를 출력, .env.example 추가. 실제 OpenAI 호출은 크레딧 소모가 있어 리더/사용자 승인 전까지 미수행(키 로드 여부는 기동 경고 부재로 확인). | QA 2차 재검증(2026-08-18): 위 두 수정 모두 코드 직접 읽고 실기동으로 재확인, evidence 참고. 재검증 중 docs/acceptance-criteria.md 시나리오 11(1) 기대문구가 실제 dev 프록시 동작(ECONNREFUSED를 프록시가 가로채 본문 없는 500 → 폴백 문구 '이미지 생성에 실패했습니다' 표시, '서버에 연결할 수 없습니다'가 아님)과 달라 환경별 분기 서술로 수정. 남은 미검증: (1) 실 API 키 종단 성공 경로(200 응답) — 계정이 billing hard limit 상태라 이 환경에서 확인 불가(키 로딩 자체는 무과금 요청으로 도달 확인됨), 시나리오 6(6)/7(5)(6)/10(1)(3)(4)(5)의 실제 생성 결과 표시는 자동화 테스트(fetch mock)까지만 검증. (2) 실제 브라우저 수동 조작(React Flow 포트 드래그, 두 창 동시 편집 체감) 미수행 — jsdom 컴포넌트 테스트 범위까지만 검증. (3) 시나리오 11(3) 429 rate limit 실제 재현 미수행(코드 경로·매핑만 확인). (4) 범위 밖 발견: docs/api-spec.md가 OpenAI 호출에 response_format:\"b64_json\"을 명시하지만 openaiClient.ts는 이 파라미터를 보내지 않음(gpt-image-1은 기본이 b64이고 이 파라미터 자체를 받지 않아 코드가 맞고 문서가 낡음) — 이번 feature가 건드린 부분이 아니라 rest-api feature에서 넘어온 서술 오류이므로 후속 정리 필요."
     },
     {
       "id": "generate-3d-preview",

@@ -6,6 +6,9 @@ import {
   deleteEdge,
   deleteNode,
   getNodesMap,
+  markGenerateImageReady,
+  markNodeError,
+  markNodePending,
   readPipelineSnapshot,
   updateNodePosition,
   updateTextPromptValue,
@@ -139,5 +142,78 @@ describe('pipelineDoc', () => {
     expect(readPipelineSnapshot(docB).nodes.map((node) => node.id)).toEqual([imageId]);
     expect(readPipelineSnapshot(docA).edges).toHaveLength(0);
     expect(readPipelineSnapshot(docB).edges).toHaveLength(0);
+  });
+
+  it('transitions a generateImage node through pending -> ready in the Y.Doc', () => {
+    const doc = new Y.Doc();
+    const imageId = addNode(doc, 'generateImage', { x: 0, y: 0 });
+
+    markNodePending(doc, imageId, 42);
+    expect(readPipelineSnapshot(doc).nodes[0]).toMatchObject({
+      status: 'pending',
+      imageUrl: null,
+      errorMessage: null,
+      pendingRun: { clientId: 42 },
+    });
+
+    markGenerateImageReady(doc, imageId, '/uploads/a.png');
+    expect(readPipelineSnapshot(doc).nodes[0]).toMatchObject({
+      status: 'ready',
+      imageUrl: '/uploads/a.png',
+      errorMessage: null,
+      pendingRun: null,
+    });
+  });
+
+  it('clears a stale result when a failed run overwrites a ready node', () => {
+    const doc = new Y.Doc();
+    const imageId = addNode(doc, 'generateImage', { x: 0, y: 0 });
+    markGenerateImageReady(doc, imageId, '/uploads/a.png');
+
+    markNodeError(doc, imageId, 'image generation failed');
+
+    expect(readPipelineSnapshot(doc).nodes[0]).toMatchObject({
+      status: 'error',
+      imageUrl: null,
+      errorMessage: 'image generation failed',
+      pendingRun: null,
+    });
+  });
+
+  it('ignores execution updates for nodes that no longer exist or cannot run', () => {
+    const doc = new Y.Doc();
+    const textId = addNode(doc, 'textPrompt', { x: 0, y: 0 });
+
+    markNodePending(doc, 'missing-node', 42);
+    markNodePending(doc, textId, 42);
+    markGenerateImageReady(doc, textId, '/uploads/a.png');
+
+    expect(readPipelineSnapshot(doc).nodes[0]).toEqual({
+      id: textId,
+      type: 'textPrompt',
+      position: { x: 0, y: 0 },
+      prompt: '',
+    });
+  });
+
+  it('propagates execution state to a peer document', () => {
+    const docA = new Y.Doc();
+    const docB = new Y.Doc();
+    const imageId = addNode(docA, 'generateImage', { x: 0, y: 0 });
+    sync(docA, docB);
+
+    markNodePending(docA, imageId, 42);
+    sync(docA, docB);
+    expect(readPipelineSnapshot(docB).nodes[0]).toMatchObject({
+      status: 'pending',
+      pendingRun: { clientId: 42 },
+    });
+
+    markGenerateImageReady(docA, imageId, '/uploads/a.png');
+    sync(docA, docB);
+    expect(readPipelineSnapshot(docB).nodes[0]).toMatchObject({
+      status: 'ready',
+      imageUrl: '/uploads/a.png',
+    });
   });
 });

@@ -1,5 +1,11 @@
 import * as Y from 'yjs';
-import type { NodeStatus, NodeType, PipelineEdge, PipelineNode } from '@repo/shared-types';
+import type {
+  NodeRunState,
+  NodeStatus,
+  NodeType,
+  PipelineEdge,
+  PipelineNode,
+} from '@repo/shared-types';
 import { canConnect } from '@repo/shared-types';
 
 export type YNode = Y.Map<unknown>;
@@ -41,6 +47,13 @@ function readNullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null;
 }
 
+function readRunState(value: unknown): NodeRunState | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const { clientId, startedAt } = value as Partial<NodeRunState>;
+  if (typeof clientId !== 'number' || typeof startedAt !== 'number') return null;
+  return { clientId, startedAt };
+}
+
 function readStatus(value: unknown): NodeStatus {
   return NODE_STATUSES.includes(value as NodeStatus) ? (value as NodeStatus) : 'idle';
 }
@@ -66,6 +79,7 @@ export function readNode(yNode: YNode): PipelineNode | null {
         status: readStatus(yNode.get('status')),
         imageUrl: readNullableString(yNode.get('imageUrl')),
         errorMessage: readNullableString(yNode.get('errorMessage')),
+        pendingRun: readRunState(yNode.get('pendingRun')),
       };
     case 'generate3d':
       return {
@@ -75,6 +89,7 @@ export function readNode(yNode: YNode): PipelineNode | null {
         status: readStatus(yNode.get('status')),
         modelUrl: readNullableString(yNode.get('modelUrl')),
         errorMessage: readNullableString(yNode.get('errorMessage')),
+        pendingRun: readRunState(yNode.get('pendingRun')),
       };
     default:
       return null;
@@ -125,11 +140,13 @@ function createYNode(type: NodeType, position: Position): { id: string; yNode: Y
       yNode.set('status', 'idle');
       yNode.set('imageUrl', null);
       yNode.set('errorMessage', null);
+      yNode.set('pendingRun', null);
       break;
     case 'generate3d':
       yNode.set('status', 'idle');
       yNode.set('modelUrl', null);
       yNode.set('errorMessage', null);
+      yNode.set('pendingRun', null);
       break;
   }
   return { id, yNode };
@@ -158,6 +175,54 @@ export function updateTextPromptValue(doc: Y.Doc, id: string, prompt: string): v
   const yNode = getNodesMap(doc).get(id);
   if (!yNode || yNode.get('type') !== 'textPrompt') return;
   yNode.set('prompt', prompt);
+}
+
+const RESULT_FIELD: Partial<Record<NodeType, string>> = {
+  generateImage: 'imageUrl',
+  generate3d: 'modelUrl',
+};
+
+/**
+ * Execution state transitions are written to the Y.Doc (never to component state) so every
+ * peer in the room sees the same pending/ready/error state while a generation runs.
+ * `pendingRun` records who owns the in-flight run: only that client will write the terminal
+ * state, so peers can detect a run abandoned by a disconnected client (see runState.ts).
+ */
+export function markNodePending(doc: Y.Doc, id: string, runnerClientId: number): void {
+  const yNode = getNodesMap(doc).get(id);
+  if (!yNode) return;
+  const resultField = RESULT_FIELD[yNode.get('type') as NodeType];
+  if (!resultField) return;
+  doc.transact(() => {
+    yNode.set('status', 'pending');
+    yNode.set(resultField, null);
+    yNode.set('errorMessage', null);
+    yNode.set('pendingRun', { clientId: runnerClientId, startedAt: Date.now() });
+  });
+}
+
+export function markGenerateImageReady(doc: Y.Doc, id: string, imageUrl: string): void {
+  const yNode = getNodesMap(doc).get(id);
+  if (!yNode || yNode.get('type') !== 'generateImage') return;
+  doc.transact(() => {
+    yNode.set('status', 'ready');
+    yNode.set('imageUrl', imageUrl);
+    yNode.set('errorMessage', null);
+    yNode.set('pendingRun', null);
+  });
+}
+
+export function markNodeError(doc: Y.Doc, id: string, errorMessage: string): void {
+  const yNode = getNodesMap(doc).get(id);
+  if (!yNode) return;
+  const resultField = RESULT_FIELD[yNode.get('type') as NodeType];
+  if (!resultField) return;
+  doc.transact(() => {
+    yNode.set('status', 'error');
+    yNode.set(resultField, null);
+    yNode.set('errorMessage', errorMessage);
+    yNode.set('pendingRun', null);
+  });
 }
 
 /** Node removal and its dangling-edge cleanup share one transaction so peers never see orphans. */

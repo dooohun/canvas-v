@@ -1,7 +1,7 @@
 # 완료 기준 시나리오
 
-> 시나리오 1~5(협업)는 `collab-canvas` feature에서 작성했다. 6~11은 해당 feature
-> (`ai-image-generation`, `node-graph`, `preview-3d`)를 시작할 때 같은 형식으로 채운다.
+> 시나리오 1~5(협업)는 `collab-canvas` feature에서, 6~8·10~11(이미지 생성)은
+> `ai-image-generation` feature에서 작성했다. 9번(3D)은 `generate-3d-preview` feature에서 채운다.
 >
 > 각 시나리오는 **사전 조건 / 조작 순서 / 기대 결과 / 자동화 가능 여부**를 갖는다.
 
@@ -178,11 +178,228 @@
 
 ---
 
-## 채워야 할 시나리오 (해당 feature에서 작성)
+## 공통 사전 조건 (시나리오 6~8, 10~11 — 이미지 생성)
 
-6. (생성+그래프) 프롬프트 입력 → 이미지 생성 → 노드 파이프라인에 결과 반영
-7. (생성+그래프) 기존 노드에서 분기 생성 → 엣지로 연결
-8. (생성+그래프) 파이프라인 실행 결과가 각 노드 상태(idle/pending/ready/error)에 반영
-9. (3D) Generate 3D 노드가 모델을 렌더링하고 OrbitControls로 회전 확인
-10. (생성) 생성 결과 이미지가 노드에 표시됨
-11. (생성) 생성 실패 시 에러 처리 확인
+- 위 "공통 사전 조건"에 더해, `apps/backend/.env.example`을 `apps/backend/.env`로 복사하고
+  `OPENAI_API_KEY`를 채운다. `apps/backend/src/index.ts`가 시작 시 이 파일을 읽는다
+  (`process.loadEnvFile`). 키가 비어 있으면 backend 기동 로그에
+  `OPENAI_API_KEY is not set — POST /api/generate-image will fail with 502` 경고가 뜨고 모든
+  생성 요청이 `502 image generation failed`로 끝나므로, 그 상태에서는 시나리오 11(실패 처리)만
+  수행 가능하다. **반대로 키가 설정되어 있으면 실행할 때마다 실제 OpenAI 크레딧이 소모된다.**
+- 이 경고가 뜨지 않는 것이 키가 실제로 로드됐다는 확인 신호다(키 값 자체는 로그에 찍지 않는다).
+- 프런트엔드는 `/api/*`, `/uploads/*`를 Vite dev 프록시로 backend(:3001)에 전달한다
+  (`apps/frontend/vite.config.ts`). 따라서 브라우저에서 보이는 URL은 항상 `:5173` 기준의
+  상대 경로다.
+- Generate Image 노드의 실행 버튼은 **연결된 Text Prompt 노드의 내용이 하나라도 비어있지 않을
+  때만** 활성화된다. 비활성일 때는 노드 카드에 `Text Prompt 노드를 연결하고 내용을 입력하세요`
+  안내가 함께 보인다.
+
+---
+
+## 6. (생성+그래프) 프롬프트 입력 → 이미지 생성 → 노드 파이프라인에 결과 반영
+
+**사전 조건**: 이미지 생성 공통 사전 조건. 캔버스는 비어 있다. A, B 모두 `?room=demo` 접속.
+
+**조작 순서**
+
+1. A에서 `Text Node`, `Image Node`를 하나씩 추가한다.
+2. A에서 Text Prompt 노드에 `a neon jellyfish in deep water`를 입력한다.
+3. 아직 두 노드를 연결하지 않은 상태에서 Generate Image 노드의 실행 버튼을 확인한다.
+4. Text Prompt 노드의 출력 포트를 Generate Image 노드의 입력 포트로 드래그해 연결한다.
+5. Generate Image 노드의 `이미지 생성` 버튼을 클릭한다.
+6. 응답이 올 때까지(수 초~수십 초) 기다린다.
+
+**기대 결과**
+
+- (3) 실행 버튼이 비활성 상태이고 안내 문구가 보인다. 클릭해도 아무 요청이 나가지 않는다
+  (DevTools Network 탭에 `/api/generate-image` 요청 없음).
+- (4) 연결 직후 실행 버튼이 활성화되고 안내 문구가 사라진다.
+- (5) 클릭 즉시 노드 상태 배지가 `idle` → `pending`으로 바뀌고, 미리보기 영역에 스피너와
+  `생성 중...`이 보이며, 실행 버튼이 비활성화된다. Network 탭에 `POST /api/generate-image`가
+  1건 나가고 요청 바디는 `{"prompt":"a neon jellyfish in deep water"}`다.
+- (6) 응답이 오면 배지가 `ready`가 되고 미리보기 영역에 생성된 이미지가 표시된다. 버튼 라벨은
+  `다시 생성`으로 바뀐다.
+- 이 모든 변화(pending → ready, 이미지)가 **B 화면에서도 동일하게** 실시간으로 보인다
+  (실행은 A만 눌렀지만 상태가 Y.Doc에 기록되기 때문).
+- 응답 바디에 API 키가 들어있지 않다(`{ "imageUrl": "/uploads/...png" }`만).
+
+**자동화 가능 여부**: 부분 자동화.
+
+- 실행 → `POST /api/generate-image` 호출 → `pending`/`ready` 전이 → 원격 피어 반영:
+  `apps/frontend/src/pipeline/__tests__/useNodeExecution.test.ts`(fetch mock),
+  `apps/frontend/src/components/pipeline/__tests__/PipelineCanvas.test.tsx`
+  ("renders pending then the generated image after a successful run").
+- 서버 쪽 요청/응답 스키마와 키 비노출: `apps/backend/src/__tests__/generate-image.test.ts`.
+- 실제 OpenAI 호출과 브라우저 렌더링은 수동 확인(실제 키 필요).
+
+---
+
+## 7. (생성+그래프) 기존 노드에서 분기 생성 → 엣지로 연결
+
+**사전 조건**: 시나리오 6을 마친 상태(Text Prompt 1개 + `ready`인 Generate Image 1개).
+
+**조작 순서**
+
+1. A에서 `Image Node`를 하나 더 추가한다.
+2. 기존 Text Prompt 노드의 출력 포트를 새 Generate Image 노드에도 연결한다(fan-out).
+3. B에서 `Text Node`를 하나 더 추가하고 `bioluminescent, dark background`를 입력한다.
+4. B에서 그 새 Text Prompt 노드를 **첫 번째** Generate Image 노드에도 연결한다(fan-in — 이제
+   그 노드에는 Text Prompt 2개가 들어온다).
+5. A에서 첫 번째 Generate Image 노드의 `다시 생성`을 클릭한다.
+6. 두 Text Prompt 노드의 화면상 위아래 위치를 바꿔(위쪽 노드를 아래로 드래그) 다시 실행한다.
+
+**기대 결과**
+
+- (2) 새 엣지가 양쪽 화면에 그려지고, 새 Generate Image 노드의 실행 버튼이 활성화된다. 기존
+  Generate Image 노드의 `ready` 이미지는 그대로 유지된다(분기가 기존 결과를 건드리지 않는다).
+- (4) 엣지가 2개 들어오는 것이 허용된다(fan-in). 노드가 중복 생성되지 않는다.
+- (5) 요청 바디의 `prompt`가 두 프롬프트를 **개행으로 이어붙인 문자열**이고, 순서는 캔버스에서
+  **위에 있는 노드가 앞**이다(같은 높이면 왼쪽이 앞, 그래도 같으면 노드 id 사전순 —
+  `docs/architecture.md` "여러 입력(fan-in) 조합 규칙").
+- (6) 순서를 바꾼 뒤 실행하면 이어붙는 순서도 그에 맞춰 바뀐다. A가 실행하든 B가 실행하든 같은
+  문자열이 만들어진다.
+- 두 Generate Image 노드는 서로 독립적으로 실행된다(하나가 `pending`이어도 다른 하나는 실행 가능).
+
+**자동화 가능 여부**: 부분 자동화.
+
+- 조합 규칙(정렬·개행 이어붙이기·공백 제외·다른 노드로 가는 엣지 무시):
+  `apps/frontend/src/pipeline/__tests__/promptComposition.test.ts`.
+- fan-out/fan-in 엣지 생성 자체: `apps/frontend/src/pipeline/__tests__/usePipelineState.test.ts`.
+- 실제 포트 드래그와 두 브라우저 간 확인은 수동.
+
+---
+
+## 8. (생성+그래프) 파이프라인 실행 결과가 각 노드 상태(idle/pending/ready/error)에 반영
+
+**사전 조건**: 이미지 생성 공통 사전 조건. Text Prompt 1개 + Generate Image 1개가 연결되어 있고
+프롬프트에 내용이 있다. A, B 모두 접속 중.
+
+**조작 순서**
+
+1. 실행 전 노드 배지를 확인한다.
+2. A에서 실행하고, 응답이 오기 전에 B 화면의 같은 노드를 본다.
+3. 성공 응답 후 양쪽 배지와 미리보기를 확인한다.
+4. backend를 잠깐 내린 뒤(또는 `OPENAI_API_KEY`를 비운 뒤 재시작) 다시 실행한다.
+5. backend를 정상 복구하고 다시 실행한다.
+6. Text Prompt 노드의 내용을 모두 지운 뒤 Generate Image 노드를 본다.
+7. 다시 내용을 채우고 A에서 실행한 뒤, `pending`이 보이는 동안 **A 탭을 새로고침**한다.
+   B 화면의 같은 노드를 본다.
+
+**기대 결과**
+
+- (1) `idle` — 미리보기는 `Empty Output`.
+- (2) A와 B 모두 `pending` — B에서도 스피너/`생성 중...`이 보이고, B의 실행 버튼도 비활성이다
+  (같은 노드를 두 사람이 동시에 중복 실행하지 않게 된다).
+- (3) 양쪽 다 `ready` + 이미지. `errorMessage`는 남지 않는다.
+- (4) 양쪽 다 `error`로 바뀌고 에러 메시지가 노드에 보인다. 이때 **직전 이미지는 지워진다**
+  (`imageUrl`은 `ready`일 때만 값이 있다는 데이터 모델 불변식 —`docs/data-model.md` 1번).
+- (5) 다시 `pending` → `ready`가 되고 새 이미지로 교체된다(`error` 상태에서 재실행 가능).
+- (6) 실행 버튼이 다시 비활성화되고 안내 문구가 보인다. 이미 있던 결과 이미지는 그대로 남는다
+  (입력이 사라졌다고 과거 결과를 지우지는 않는다).
+- (7) A가 사라지면 B 화면의 노드가 잠시 뒤 "실행하던 사용자의 연결이 끊겼습니다. 다시 실행하세요"로
+  바뀌고 실행 버튼이 다시 활성화된다. B가 실행하면 정상적으로 `pending` → `ready`가 된다.
+  **노드가 `pending`으로 굳어 삭제밖에 방법이 없는 상태가 되어서는 안 된다**
+  (`docs/architecture.md` "실행 상태(pending) 소유권과 회수"). 반대로 A가 살아서 실행 중인
+  동안에는 B의 버튼이 비활성이어야 한다(중복 실행 방지).
+
+**자동화 가능 여부**: 대부분 자동화됨.
+
+- 상태 전이와 불변식(pending 시 결과 비움, error 시 이미지 제거, 재실행 시 교체):
+  `apps/frontend/src/collab/__tests__/pipelineDoc.test.ts`
+  ("transitions a generateImage node through pending -> ready in the Y.Doc",
+  "clears a stale result when a failed run overwrites a ready node",
+  "propagates execution state to a peer document"),
+  `useNodeExecution.test.ts`("clears a previous result when the node is re-run").
+- 원격 피어에 실행 상태가 보이는 것: `PipelineCanvas.test.tsx`("shows a remote peer’s execution state").
+- 버려진 실행 판정과 회수: `apps/frontend/src/pipeline/__tests__/runState.test.ts`(7건),
+  `PipelineCanvas.test.tsx`("lets a pending run be recovered after its owner disconnects",
+  "keeps the run locked while the peer that started it is still connected").
+- 실제 backend 중단/복구 왕복, 실행 중 탭 새로고침은 수동.
+
+---
+
+## 9. (3D) Generate 3D 노드가 모델을 렌더링하고 OrbitControls로 회전 확인
+
+> `generate-3d-preview` feature에서 작성한다.
+
+---
+
+## 10. (생성) 생성 결과 이미지가 노드에 표시됨
+
+**사전 조건**: 시나리오 6의 결과(`ready`인 Generate Image 노드 1개).
+
+**조작 순서**
+
+1. Generate Image 노드의 미리보기 영역을 본다.
+2. DevTools Elements에서 그 `<img>`의 `src`를 확인하고, 같은 URL을 새 탭에서 연다.
+3. 캔버스를 확대/축소하고 노드를 드래그해 옮긴다.
+4. B(다른 브라우저)에서 같은 room을 새로 열어 노드를 확인한다.
+5. A 탭을 새로고침한다(B는 접속 유지).
+
+**기대 결과**
+
+- (1) 생성된 이미지가 노드 카드 안에 표시되고, `Empty Output` 플레이스홀더는 사라진다.
+- (2) `src`는 `/uploads/<uuid>-generated.png` 형태의 상대 경로다(외부 AI 서비스의 임시 URL이
+  아니다 — `docs/api-spec.md` 공통 사항). 새 탭에서 열면 같은 이미지가 200으로 응답된다.
+- (3) 이미지가 노드와 함께 이동/확대되고 깨지지 않는다.
+- (4) B 화면에서도 같은 이미지가 보인다(Y.Doc에 URL만 공유되고 이미지 자체는 서버에서 서빙).
+- (5) 새로고침 후에도 이미지가 그대로 복원된다(다른 클라이언트가 room에 남아 있는 경우 —
+  시나리오 4의 알려진 한계 동일).
+
+**자동화 가능 여부**: 부분 자동화.
+
+- 응답 URL이 노드에 반영되고 `<img>`로 렌더링되는 것: `PipelineCanvas.test.tsx`
+  ("renders pending then the generated image after a successful run" — `alt="생성된 이미지"`의
+  `src` 확인).
+- `/uploads/:filename` 서빙과 경로 순회 차단: `apps/backend/src/__tests__/uploads-static.test.ts`.
+- 실제 이미지 픽셀이 브라우저에 그려지는 것은 수동 확인.
+
+---
+
+## 11. (생성) 생성 실패 시 에러 처리 확인
+
+**사전 조건**: Text Prompt(내용 있음) 1개 + Generate Image 1개가 연결되어 있다.
+
+**조작 순서**
+
+1. backend를 완전히 종료한 뒤 실행 버튼을 클릭한다.
+2. backend를 켜되 `OPENAI_API_KEY`를 비우거나 잘못된 값으로 설정하고 재시작한 뒤 실행한다.
+3. (선택) OpenAI rate limit(429)을 유발하거나, `apps/backend/src/lib/openaiClient.ts`가 429를
+   던지도록 임시 수정해 실행한다.
+4. 실패한 상태에서 노드를 그대로 두고 B 화면을 확인한다.
+5. 정상 상태로 복구한 뒤 같은 노드에서 `다시 생성`을 클릭한다.
+
+**기대 결과**
+
+- (1) 배지가 `error`가 되고 노드에 에러 메시지가 표시된다. 표시되는 문구는 요청이 Vite dev
+  프록시를 거치는지에 따라 갈린다.
+  - `pnpm dev`(Vite dev 프록시 경유): 프록시가 backend의 ECONNREFUSED를 가로채 본문이 빈
+    `500 Internal Server Error`(`Content-Type: text/plain`)를 대신 응답하므로 `fetch`는
+    reject하지 않는다. 응답 본문 JSON 파싱이 실패해 폴백 문구인
+    `이미지 생성에 실패했습니다`가 표시된다.
+  - 프록시를 거치지 않는 호출(same-origin 배포 등): `fetch` 자체가 throw하여
+    `서버에 연결할 수 없습니다`가 표시된다.
+  - 어느 경우든 노드는 `error`로 전이되고, 브라우저 콘솔에 처리되지 않은
+    예외(unhandled rejection)가 남지 않는다.
+- (2) 배지가 `error`가 되고 서버가 준 메시지 `image generation failed`가 표시된다
+  (`docs/api-spec.md` 에러 표). 화면 어디에도 스택 트레이스나 API 키가 보이지 않는다.
+- (3) `rate limited, try again later`가 표시된다.
+- (4) B 화면에서도 같은 `error` 상태와 같은 메시지가 보인다.
+- (5) `pending` → `ready`로 정상 복구되고, 에러 메시지는 사라진다. 노드가 `error`에서 영구히
+  막히지 않는다.
+- 어떤 실패에서도 노드가 **복구 불가능한 `pending`으로 남지 않는다**. 구체적으로:
+  - 응답이 오지 않고 매달리는 경우: 클라이언트 요청 타임아웃(2분)이 걸려 실행자가 스스로
+    `error`(`생성 요청이 시간 초과되었습니다`)로 끝낸다.
+  - 실행자가 사라져 아무도 끝낼 수 없는 경우: 남은 피어가 "실행하던 사용자의 연결이 끊겼습니다"
+    안내와 함께 재실행할 수 있다(시나리오 8의 (7)).
+
+**자동화 가능 여부**: 대부분 자동화됨.
+
+- 네트워크 실패/502/429 각각의 메시지와 `error` 전이: `useNodeExecution.test.ts`
+  ("stores the server error message when generation fails",
+  "reports a network failure without leaving the node stuck in pending"),
+  `PipelineCanvas.test.tsx`("renders the server error message when the run fails").
+- 요청 타임아웃(AbortController): `apps/frontend/src/api/__tests__/generation.test.ts`
+  ("aborts and reports a timeout when the server never responds").
+- 서버 쪽 에러 status/body와 키 비노출: `apps/backend/src/__tests__/generate-image.test.ts`.
+- 실제 rate limit 재현은 수동(또는 위 3번의 임시 수정).

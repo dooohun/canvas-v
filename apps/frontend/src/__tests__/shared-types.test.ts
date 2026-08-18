@@ -17,6 +17,7 @@ describe('@repo/shared-types', () => {
       status: 'idle',
       imageUrl: null,
       errorMessage: null,
+      pendingRun: null,
     };
 
     expect(textPrompt.prompt).toBe('a cat');
