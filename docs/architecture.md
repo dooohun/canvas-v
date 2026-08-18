@@ -2,8 +2,7 @@
 
 > **2026-07-09 업데이트**: `docs/product-plan.md`의 화면 구성 변경(3패널 탭 → 단일 노드
 > 파이프라인 캔버스)에 맞춰 이 문서를 다시 썼다. `docs/data-model.md`도 같이 다시 썼다.
-> `docs/acceptance-criteria.md`(스텁)와 `feature_list.json`은 아직 옛 구조 기준이라 이어서
-> 손봐야 한다.
+> `docs/acceptance-criteria.md`의 시나리오는 이후 각 feature에서 새 구조 기준으로 다시 작성했다.
 
 ## 모노레포 구성
 
@@ -97,9 +96,23 @@ Hocuspocus는 Yjs WebSocket 백엔드를 대신 구현해주는 프레임워크�
 보고, 노드의 실행 버튼을 비활성화한다(안내 문구 노출). 방어적으로 실행이 호출되더라도 API를
 호출하지 않고 `status: "error"`로 남긴다.
 
-**이미지(여러 `generateImage` → 하나의 `generate3d`)**: `POST /api/generate-3d`가 이미지 하나만
-받으므로(`docs/api-spec.md`), 같은 정렬 기준의 **첫 번째** `status: "ready"` 이미지를 쓴다.
-확정 및 구현은 `generate-3d-preview` feature에서 한다.
+**이미지(여러 `generateImage` → 하나의 `generate3d`)**
+
+`POST /api/generate-3d`는 이미지 하나만 받으므로(`docs/api-spec.md`) 조합이 아니라 **선택**이다
+(2026-08-18 결정, 구현: `apps/frontend/src/pipeline/imageSelection.ts`).
+
+1. 실행 대상 `generate3d` 노드로 들어오는 엣지의 source 중 `generateImage` 노드만 모은다.
+2. 텍스트와 **동일한 정렬 기준**(`position.y` → `position.x` → 노드 id 사전순)으로 정렬한다.
+   정렬 함수는 `apps/frontend/src/pipeline/fanIn.ts`에 한 번만 정의하고 텍스트/이미지가 공유한다.
+3. 그중 **첫 번째 `status: "ready"`** 노드의 `imageUrl`을 쓴다. 앞쪽 노드가 아직 `idle`/`pending`/
+   `error`면 건너뛰고 다음 후보로 넘어간다(입력 하나가 실패해도 파이프라인이 멈추지 않는다).
+4. `ready`인 후보가 하나도 없으면 실행 불가 상태로 보고 실행 버튼을 비활성화한다(안내 문구 노출).
+   방어적으로 실행이 호출되더라도 API를 호출하지 않고 `status: "error"`로 남긴다.
+
+"사용자가 입력을 직접 고르게 하는" 방식은 채택하지 않았다. 선택 UI는 Y.Doc에 "선택된 입력"이라는
+새 공유 상태를 요구하는데, 좌표 기준 규칙만으로도 모든 피어가 같은 결과를 얻고 화면만 보고 예측
+가능하기 때문이다(노드를 위로 옮기면 그 이미지가 쓰인다). 필요해지면 나중에 노드에 명시적
+선택 필드를 추가하는 방향으로 확장할 수 있다.
 
 ## 실행 상태(pending) 소유권과 회수
 
@@ -127,7 +140,22 @@ awareness는 소유자가 사라지면 서버가 `removeAwarenessStates`를 중�
 남은 피어가 별도 하트비트 없이 소유자 이탈을 알 수 있다. 시각 비교는 피어 간 시계 오차의
 영향을 받으므로 판정의 1차 근거는 awareness이고 시간은 보조 수단이다.
 
-## 열린 질문
+## Generate 3D 노드 렌더링
 
-- 이미지 fan-in의 실제 구현(위 규칙을 그대로 적용할지, 사용자가 입력을 고르게 할지)은
-  `generate-3d-preview` feature에서 마무리한다. 텍스트 fan-in은 위에서 확정됐다.
+`POST /api/generate-3d`가 반환하는 `modelUrl`은 우리 서버가 서빙하는 **glTF Binary(`.glb`)**
+파일이다(`apps/backend/src/lib/meshyClient.ts`가 Meshy 응답의 `model_urls.glb`를 받아 저장).
+따라서 클라이언트는 `three`의 `GLTFLoader`로 로드한다.
+
+- 렌더링은 노드 카드 안에서 일어난다(별도 3D 탭/화면 없음 — 2026-07-09 화면 구성 변경).
+  Three.js 배관은 `apps/frontend/src/three/modelScene.ts`에 React와 분리해 두고, React 쪽은
+  `apps/frontend/src/components/pipeline/ModelViewer.tsx`가 `<canvas>` 하나를 마운트/해제하며
+  `modelUrl`이 바뀔 때마다 씬을 다시 만든다.
+- 회전은 `OrbitControls`로 한다. 카드 안에서의 드래그/휠이 React Flow의 캔버스 팬/줌으로
+  새어나가지 않도록 뷰어 컨테이너에 `nodrag nowheel`을 준다.
+- 모델의 크기 단위가 고정돼 있지 않으므로 로드 후 바운딩 박스로 원점 정렬 + 카메라 거리 보정을
+  해서 어떤 모델이든 같은 크기로 보이게 한다.
+- WebGL 컨텍스트를 만들 수 없는 환경(jsdom 테스트, WebGL 비활성 브라우저)에서는 예외를 잡아
+  안내 문구로 대체한다 — 3D 미리보기 실패가 캔버스 전체를 죽이지 않는다.
+
+`three`는 `apps/frontend`의 의존성이다(`@react-three/fiber` 같은 래퍼는 쓰지 않는다 — 노드 하나에
+캔버스 하나뿐이라 추상화 비용이 이득보다 크다).

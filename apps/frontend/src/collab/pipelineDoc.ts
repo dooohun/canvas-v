@@ -212,6 +212,17 @@ export function markGenerateImageReady(doc: Y.Doc, id: string, imageUrl: string)
   });
 }
 
+export function markGenerate3dReady(doc: Y.Doc, id: string, modelUrl: string): void {
+  const yNode = getNodesMap(doc).get(id);
+  if (!yNode || yNode.get('type') !== 'generate3d') return;
+  doc.transact(() => {
+    yNode.set('status', 'ready');
+    yNode.set('modelUrl', modelUrl);
+    yNode.set('errorMessage', null);
+    yNode.set('pendingRun', null);
+  });
+}
+
 export function markNodeError(doc: Y.Doc, id: string, errorMessage: string): void {
   const yNode = getNodesMap(doc).get(id);
   if (!yNode) return;

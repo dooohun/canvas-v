@@ -1,7 +1,7 @@
 # 완료 기준 시나리오
 
 > 시나리오 1~5(협업)는 `collab-canvas` feature에서, 6~8·10~11(이미지 생성)은
-> `ai-image-generation` feature에서 작성했다. 9번(3D)은 `generate-3d-preview` feature에서 채운다.
+> `ai-image-generation` feature에서, 9번(3D)은 `generate-3d-preview` feature에서 작성했다.
 >
 > 각 시나리오는 **사전 조건 / 조작 순서 / 기대 결과 / 자동화 가능 여부**를 갖는다.
 
@@ -320,7 +320,78 @@
 
 ## 9. (3D) Generate 3D 노드가 모델을 렌더링하고 OrbitControls로 회전 확인
 
-> `generate-3d-preview` feature에서 작성한다.
+**사전 조건**
+
+- 이미지 생성 공통 사전 조건에 더해 `apps/backend/.env`의 `MESHY_API_KEY`를 채운다. 비어 있으면
+  backend 기동 로그에 `MESHY_API_KEY is not set — POST /api/generate-3d will fail with 502`
+  경고가 뜨고 모든 3D 생성이 `502 3d generation failed`로 끝난다(그 상태에서는 아래 (6)의 실패
+  경로만 확인 가능하다). **키가 설정되어 있으면 실행할 때마다 실제 Meshy 크레딧이 소모된다.**
+- 시나리오 6을 마쳐 `ready`인 Generate Image 노드가 하나 있다. A, B 모두 `?room=demo` 접속.
+- 브라우저에서 WebGL이 활성화돼 있어야 한다(`chrome://gpu`). 비활성이면 노드 카드에
+  `이 환경에서는 3D 미리보기를 표시할 수 없습니다`가 대신 표시된다.
+
+**조작 순서**
+
+1. A에서 하단 툴바의 `3D Node`를 클릭해 Generate 3D 노드를 추가한다. 연결하기 전에 실행 버튼을
+   확인한다.
+2. `ready`인 Generate Image 노드의 출력 포트를 Generate 3D 노드의 입력 포트로 드래그해 연결한다.
+3. Generate 3D 노드의 `3D 생성` 버튼을 클릭하고, 응답이 올 때까지(수십 초~수 분) 기다린다.
+   기다리는 동안 B 화면의 같은 노드를 본다.
+4. 결과가 보이면 노드 안 3D 뷰포트를 마우스로 드래그하고, 휠을 굴린다. 이어서 뷰포트 **바깥**의
+   노드 헤더를 잡고 노드를 캔버스에서 옮겨 본다.
+5. Generate Image 노드를 하나 더 만들어 생성한 뒤, 그것도 같은 Generate 3D 노드에 연결한다
+   (fan-in). 두 이미지 노드의 위아래 위치를 바꿔 가며 `다시 생성`을 눌러 본다.
+6. backend를 내리거나 `MESHY_API_KEY`를 비운 채 재시작하고 다시 실행한다. 그 뒤 정상 복구해
+   다시 실행한다.
+7. `pending`이 보이는 동안 A 탭을 새로고침하고 B 화면의 같은 노드를 본다.
+
+**기대 결과**
+
+- (1) 실행 버튼이 비활성이고 `이미지가 생성된 Generate Image 노드를 연결하세요` 안내가 보인다.
+  상태 배지는 `idle`, 뷰포트 자리에는 `[3D_VIEWPORT_RENDERER]` 플레이스홀더가 보인다.
+- (2) 연결 직후 실행 버튼이 활성화되고 안내 문구가 사라진다. 연결한 이미지 노드가 아직 `ready`가
+  아니면 버튼은 계속 비활성이다(이미지가 없으면 3D를 만들 수 없다).
+- (3) 클릭 즉시 배지가 `pending`이 되고 스피너/`생성 중...`이 보인다. Network 탭에
+  `POST /api/generate-3d`가 1건 나가고 바디는 `{"imageUrl":"/uploads/<...>.png"}` 하나뿐이다
+  (이미지 여러 장이나 프롬프트가 함께 나가지 않는다). B 화면에서도 같은 `pending`이 보이고
+  B의 실행 버튼도 비활성이다. 응답이 오면 양쪽 배지가 `ready`가 되고, 응답 바디는
+  `{ "modelUrl": "/uploads/<uuid>-model.glb" }`뿐이다(API 키가 들어있지 않다).
+- (4) 노드 카드 안 검은 뷰포트에 3D 메시가 그려진다. 드래그하면 **모델이 회전**하고 휠로
+  확대/축소된다. 이때 캔버스 자체는 팬/줌되지 않고 노드도 끌려가지 않는다(뷰어에 `nodrag nowheel`).
+  뷰포트 바깥의 헤더를 잡으면 평소처럼 노드가 이동하며, 이동/줌 후에도 모델이 계속 렌더링된다.
+  B 화면에서도 같은 모델이 렌더링된다(Y.Doc에는 URL만 공유되고 파일은 서버가 서빙).
+- (5) fan-in이 허용되고 노드가 중복 생성되지 않는다. 실행 시 보내는 `imageUrl`은 항상 **캔버스에서
+  더 위에 있는** `ready` 이미지 노드의 것이다(같은 높이면 왼쪽, 그래도 같으면 노드 id 사전순 —
+  `docs/architecture.md` "여러 입력(fan-in) 조합 규칙"). 위아래를 바꾸면 보내는 이미지도 바뀐다.
+  위쪽 이미지 노드가 `error`/`pending`이면 그것을 건너뛰고 아래쪽 `ready` 이미지가 쓰인다.
+  A가 실행하든 B가 실행하든 같은 이미지가 선택된다.
+- (6) 배지가 `error`가 되고 노드에 `3d generation failed`(rate limit이면
+  `rate limited, try again later`)가 표시된다. 이전 `modelUrl`은 지워져 뷰포트가 다시 플레이스홀더로
+  돌아간다(결과는 `ready`일 때만 존재한다는 데이터 모델 불변식). 화면 어디에도 API 키나 스택
+  트레이스가 없다. 정상 복구 후 `다시 생성`을 누르면 `pending` → `ready`로 회복된다.
+- (7) B 화면의 노드가 잠시 뒤 `실행하던 사용자의 연결이 끊겼습니다. 다시 실행하세요`로 바뀌고
+  실행 버튼이 다시 활성화된다. 노드가 복구 불가능한 `pending`으로 굳지 않는다
+  (`docs/architecture.md` "실행 상태(pending) 소유권과 회수" — 시나리오 8 (7)과 동일한 경로).
+
+**자동화 가능 여부**: 부분 자동화.
+
+- 이미지 fan-in 선택 규칙(정렬·`ready`가 아닌 후보 건너뛰기·다른 노드로 가는 엣지 무시):
+  `apps/frontend/src/pipeline/__tests__/imageSelection.test.ts`.
+- 실행 → `POST /api/generate-3d` 호출 → `pending`/`ready`/`error` 전이 → 원격 피어 반영:
+  `apps/frontend/src/pipeline/__tests__/useNodeExecution.test.ts`
+  (`useNodeExecution — runGenerate3d` 5건),
+  `apps/frontend/src/components/pipeline/__tests__/PipelineCanvas.test.tsx`
+  (`PipelineCanvas — Generate 3D 실행` 5건).
+- 요청/응답 스키마, 타임아웃, 에러 메시지: `apps/frontend/src/api/__tests__/generation.test.ts`
+  (`requestGenerate3d` 4건), 서버 쪽은 `apps/backend/src/__tests__/generate-3d.test.ts`.
+- Three.js 씬/카메라/렌더러/OrbitControls 초기화, `modelUrl`을 GLTFLoader로 로드, 모델 프레이밍,
+  dispose: `apps/frontend/src/three/__tests__/modelScene.test.ts`(WebGL 렌더러만 stub, 나머지는 실제
+  three). 뷰어 컴포넌트가 `modelUrl` 변경마다 씬을 다시 만들고 언마운트 시 정리하는 것과 WebGL
+  불가 환경 폴백: `apps/frontend/src/components/pipeline/__tests__/ModelViewer.test.tsx`.
+- **수동 확인이 필요한 것**: 실제 픽셀이 그려지는지, OrbitControls 드래그로 정말 회전하는지,
+  React Flow 캔버스로 제스처가 새지 않는지, 그리고 실제 Meshy API 왕복(위 (3)의 종단 성공).
+  jsdom에는 WebGL이 없어 자동화 범위 밖이다 — 브라우저(또는 Playwright + WebGL 지원 헤드리스)로
+  확인한다.
 
 ---
 

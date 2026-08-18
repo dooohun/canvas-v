@@ -3,8 +3,16 @@
 ## Current State
 
 - `monorepo-setup`/`shared-types`/`pipeline-canvas`/`rest-api`/`ws-protocol`/
-  `collab-canvas`/`ai-image-generation` 7개 `passing` (7/9). 다음 우선순위는
-  `generate-3d-preview`(priority 8).
+  `collab-canvas`/`ai-image-generation`/`generate-3d-preview` 8개 `passing` (8/9).
+  다음 우선순위는 `optimization-pass`(priority 9).
+- `generate-3d-preview`: image fan-in 선택 규칙(여러 `generateImage` → 하나의
+  `generate3d`, 캔버스 좌표 정렬 후 첫 `ready` 이미지 사용)을 확정하고
+  `apps/frontend/src/pipeline/fanIn.ts`로 텍스트/이미지 fan-in 정렬 로직을
+  공용화. `apps/frontend/src/three/modelScene.ts` + `ModelViewer.tsx`가
+  `GLTFLoader`+`OrbitControls`로 Generate 3D 노드 카드 안에 `.glb` 모델을
+  렌더링(`nodrag nowheel`로 React Flow 제스처와 격리). 리더가 Chrome으로 직접
+  브라우저 검증(공개 샘플 glTF를 modelUrl로 모킹)해 실제 WebGL 렌더링과
+  OrbitControls 회전, React Flow 팬 미간섭을 확인.
 - `ai-image-generation`: `apps/frontend/src/pipeline/{promptComposition,runState,
   useNodeExecution}.ts` + `src/api/`로 fan-in 프롬프트 조합·실행 상태·API 호출을
   구현. 실행 상태(`pending`/`ready`/`error`)는 Y.Doc에만 기록되어 협업 중인 모든

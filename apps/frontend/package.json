@@ -27,6 +27,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.31"
   },
@@ -40,6 +41,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.17.0",
     "jiti": "^2.7.0",

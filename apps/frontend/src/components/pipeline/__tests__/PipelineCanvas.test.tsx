@@ -8,10 +8,18 @@ import {
   addEdge,
   addNode,
   getNodesMap,
+  markGenerateImageReady,
   readPipelineSnapshot,
   updateTextPromptValue,
 } from '@/collab/pipelineDoc';
 import { PipelineCanvas } from '../PipelineCanvas';
+
+const sceneMock = vi.hoisted(() => ({ create: vi.fn(), dispose: vi.fn() }));
+
+vi.mock('@/three/modelScene', () => ({
+  createModelScene: sceneMock.create.mockReturnValue({ dispose: sceneMock.dispose }),
+  MODEL_LOAD_ERROR_MESSAGE: '3D 모델을 불러오지 못했습니다',
+}));
 
 function renderCanvas() {
   const harness = createCollabHarness();
@@ -274,5 +282,147 @@ describe('PipelineCanvas — Generate Image 실행', () => {
       expect(screen.getByTestId('generate-image-status')).toHaveTextContent('pending');
     });
     expect(screen.getByTestId('run-generate-image')).toBeDisabled();
+  });
+});
+
+describe('PipelineCanvas — Generate 3D 실행', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sceneMock.create.mockClear();
+  });
+
+  function render3dPipeline({ withReadyImage }: { withReadyImage: boolean }) {
+    const rendered = renderCanvas();
+    let modelId = '';
+    act(() => {
+      const imageId = addNode(rendered.doc, 'generateImage', { x: 0, y: 0 });
+      modelId = addNode(rendered.doc, 'generate3d', { x: 400, y: 0 });
+      if (withReadyImage) markGenerateImageReady(rendered.doc, imageId, '/uploads/source.png');
+      addEdge(rendered.doc, imageId, modelId);
+    });
+    return { ...rendered, modelId };
+  }
+
+  it('keeps the run button disabled until a connected image is ready', async () => {
+    const { doc } = render3dPipeline({ withReadyImage: false });
+
+    expect(screen.getByTestId('run-generate-3d')).toBeDisabled();
+    expect(
+      screen.getByText('이미지가 생성된 Generate Image 노드를 연결하세요'),
+    ).toBeInTheDocument();
+
+    act(() => {
+      const imageId = readPipelineSnapshot(doc).nodes.find(
+        (node) => node.type === 'generateImage',
+      )!.id;
+      markGenerateImageReady(doc, imageId, '/uploads/source.png');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('run-generate-3d')).toBeEnabled();
+    });
+  });
+
+  it('renders pending, then mounts the Three.js viewer with the returned model url', async () => {
+    let resolveFetch: (response: Response) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFetch = resolve;
+          }),
+      ),
+    );
+    const user = userEvent.setup();
+    render3dPipeline({ withReadyImage: true });
+
+    await user.click(screen.getByTestId('run-generate-3d'));
+
+    expect(screen.getByTestId('generate-3d-status')).toHaveTextContent('pending');
+    expect(screen.getByTestId('run-generate-3d')).toBeDisabled();
+
+    await act(async () => {
+      resolveFetch(
+        new Response(JSON.stringify({ modelUrl: '/uploads/a-model.glb' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-3d-status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('model-viewer-canvas')).toHaveAttribute(
+      'data-model-url',
+      '/uploads/a-model.glb',
+    );
+    expect(sceneMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({ modelUrl: '/uploads/a-model.glb' }),
+    );
+  });
+
+  it('renders the server error message when the 3D run fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: '3d generation failed' }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+    const user = userEvent.setup();
+    render3dPipeline({ withReadyImage: true });
+
+    await user.click(screen.getByTestId('run-generate-3d'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-3d-error')).toHaveTextContent('3d generation failed');
+    });
+    expect(screen.getByTestId('run-generate-3d')).toBeEnabled();
+    expect(screen.queryByTestId('model-viewer-canvas')).not.toBeInTheDocument();
+  });
+
+  it('shows a remote peer’s 3D result without running anything locally', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { doc, modelId } = render3dPipeline({ withReadyImage: true });
+    const remoteDoc = new Y.Doc();
+    Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(doc));
+    remoteDoc.transact(() => {
+      const yNode = getNodesMap(remoteDoc).get(modelId)!;
+      yNode.set('status', 'ready');
+      yNode.set('modelUrl', '/uploads/remote-model.glb');
+    });
+
+    act(() => {
+      Y.applyUpdate(doc, Y.encodeStateAsUpdate(remoteDoc), 'remote');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('generate-3d-status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('model-viewer-canvas')).toHaveAttribute(
+      'data-model-url',
+      '/uploads/remote-model.glb',
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a pending 3D run be recovered after its owner disconnects', () => {
+    const { doc, modelId } = render3dPipeline({ withReadyImage: true });
+
+    act(() => {
+      doc.transact(() => {
+        const yNode = getNodesMap(doc).get(modelId)!;
+        yNode.set('status', 'pending');
+        yNode.set('pendingRun', { clientId: 987_654, startedAt: Date.now() });
+      });
+    });
+
+    expect(screen.getByTestId('generate-3d-abandoned')).toBeInTheDocument();
+    expect(screen.getByTestId('run-generate-3d')).toBeEnabled();
   });
 });

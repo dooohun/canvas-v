@@ -13,6 +13,8 @@ export interface PipelineNodeData extends PipelineNodeHandlers {
   remoteSelectors: RemoteSelector[];
   /** Prompt resolved from the incoming edges; empty when the node has no runnable input. */
   inputPrompt: string;
+  /** Image resolved from the incoming edges (generate3d only); null when there is none yet. */
+  inputImageUrl: string | null;
   /** A `pending` run whose owner is gone; the node stays runnable so it can be recovered. */
   isRunAbandoned: boolean;
   [key: string]: unknown;
@@ -23,6 +25,7 @@ export interface ReconcileContext {
   handlers: PipelineNodeHandlers;
   selectorsByNodeId?: Map<string, RemoteSelector[]>;
   inputPromptByNodeId?: Map<string, string>;
+  inputImageUrlByNodeId?: Map<string, string | null>;
   abandonedRunNodeIds?: ReadonlySet<string>;
 }
 
@@ -47,7 +50,13 @@ export function reconcileFlowNodes(
   currentFlowNodes: Node<PipelineNodeData>[],
   context: ReconcileContext,
 ): Node<PipelineNodeData>[] {
-  const { handlers, selectorsByNodeId, inputPromptByNodeId, abandonedRunNodeIds } = context;
+  const {
+    handlers,
+    selectorsByNodeId,
+    inputPromptByNodeId,
+    inputImageUrlByNodeId,
+    abandonedRunNodeIds,
+  } = context;
   const currentById = new Map(currentFlowNodes.map((node) => [node.id, node]));
   return domainNodes.map((domainNode) => {
     const existing = currentById.get(domainNode.id);
@@ -60,6 +69,7 @@ export function reconcileFlowNodes(
         pipelineNode: domainNode,
         remoteSelectors: selectorsByNodeId?.get(domainNode.id) ?? NO_SELECTORS,
         inputPrompt: inputPromptByNodeId?.get(domainNode.id) ?? '',
+        inputImageUrl: inputImageUrlByNodeId?.get(domainNode.id) ?? null,
         isRunAbandoned: abandonedRunNodeIds?.has(domainNode.id) ?? false,
         ...handlers,
       },

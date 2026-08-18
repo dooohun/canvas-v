@@ -19,6 +19,7 @@ import { groupSelectorsByNodeId, useLocalPresence, useRemotePresence } from '@/c
 import { usePipelineState } from '@/pipeline/usePipelineState';
 import { useNodeExecution } from '@/pipeline/useNodeExecution';
 import { composeInputPromptsByNodeId } from '@/pipeline/promptComposition';
+import { selectInputImageUrlsByNodeId } from '@/pipeline/imageSelection';
 import { collectAbandonedRunNodeIds } from '@/pipeline/runState';
 import {
   reconcileFlowNodes,
@@ -60,7 +61,7 @@ function PipelineCanvasInner() {
     addEdge,
     deleteEdge,
   } = usePipelineState();
-  const { runGenerateImage } = useNodeExecution();
+  const { runGenerateImage, runGenerate3d } = useNodeExecution();
   const remotePresence = useRemotePresence();
   const { setSelectedNodeId, setCursor } = useLocalPresence();
   const { screenToFlowPosition } = useReactFlow();
@@ -71,6 +72,10 @@ function PipelineCanvasInner() {
     () => composeInputPromptsByNodeId(nodes, edges),
     [nodes, edges],
   );
+  const inputImageUrlByNodeId = useMemo(
+    () => selectInputImageUrlsByNodeId(nodes, edges),
+    [nodes, edges],
+  );
   const abandonedRunNodeIds = useMemo(() => {
     const activeClientIds = new Set([
       awareness.clientID,
@@ -79,11 +84,16 @@ function PipelineCanvasInner() {
     return collectAbandonedRunNodeIds(nodes, activeClientIds);
   }, [nodes, remotePresence, awareness]);
 
+  const nodeTypeById = useMemo(() => new Map(nodes.map((node) => [node.id, node.type])), [nodes]);
   const handleRunNode = useCallback(
     (id: string) => {
+      if (nodeTypeById.get(id) === 'generate3d') {
+        void runGenerate3d(id);
+        return;
+      }
       void runGenerateImage(id);
     },
-    [runGenerateImage],
+    [nodeTypeById, runGenerate3d, runGenerateImage],
   );
 
   const reconcileContext = useMemo(
@@ -95,6 +105,7 @@ function PipelineCanvasInner() {
       },
       selectorsByNodeId,
       inputPromptByNodeId,
+      inputImageUrlByNodeId,
       abandonedRunNodeIds,
     }),
     [
@@ -103,6 +114,7 @@ function PipelineCanvasInner() {
       handleRunNode,
       selectorsByNodeId,
       inputPromptByNodeId,
+      inputImageUrlByNodeId,
       abandonedRunNodeIds,
     ],
   );

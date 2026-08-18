@@ -5,3 +5,5 @@
 {"ts":"2026-08-17T06:01:12Z","feature_id":"ai-image-generation","event":"roundtrip","detail":{"round":1,"summary":"pending 상태 영구 고착(복구 경로 없음) + backend가 .env를 로드하지 않아 성공 경로 도달 불가"}}
 {"ts":"2026-08-18T05:56:30Z","feature_id":"ai-image-generation","event":"roundtrip","detail":{"round":2,"summary":"docs/acceptance-criteria.md 시나리오 11(1) 기대문구가 dev 프록시 실동작과 불일치 - 환경별 분기 서술로 수정"}}
 {"ts":"2026-08-18T05:56:30Z","feature_id":"ai-image-generation","event":"final_status","detail":{"status":"passing"}}
+{"ts":"2026-08-18T06:17:32Z","feature_id":"generate-3d-preview","event":"feature_selected","detail":{"status_before":"not_started"}}
+{"ts":"2026-08-18T06:33:49Z","feature_id":"generate-3d-preview","event":"final_status","detail":{"status":"passing"}}

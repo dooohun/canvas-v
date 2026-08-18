@@ -156,12 +156,16 @@
       "area": "apps/frontend",
       "title": "Generate 3D 노드 렌더링",
       "user_visible_behavior": "Generate 3D 노드에 이미지가 연결되고 실행되면, 노드 내부(또는 확대 뷰)에서 Three.js로 결과가 렌더링되고 OrbitControls로 회전하며 확인할 수 있다.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "docs/acceptance-criteria.md의 3D 시나리오(재작성 필요, 옛 시나리오 9에 대응)를 수동 실행해 확인한다."
       ],
-      "evidence": [],
-      "notes": "옛 feature id는 preview-3d(별도 3D 프리뷰 탭)였으나, 2026-07-09 화면 구성 변경으로 Generate 3D 노드 안에서 렌더링하는 것으로 범위가 바뀌어 id/제목을 변경함. docs/architecture.md '열린 질문'(이미지를 고정된 3D 모델에 텍스처로 매핑하는 것인지, 별도 image-to-3D 생성 API를 쓰는 것인지)이 이 feature를 시작하기 전에 확정돼야 한다 — 확정에 따라 rest-api feature의 범위도 달라질 수 있다."
+      "evidence": [
+        "2026-08-18: image fan-in 선택 규칙(여러 generateImage → 하나의 generate3d)을 확정 — POST /api/generate-3d가 이미지 하나만 받으므로 텍스트 fan-in과 동일한 정렬 기준(캔버스 좌표 y→x→노드id)으로 정렬한 뒤 첫 번째 status:'ready' 이미지를 사용한다. 정렬 함수를 apps/frontend/src/pipeline/fanIn.ts에 한 번만 정의해 promptComposition.ts(텍스트)와 imageSelection.ts(이미지)가 공유하도록 리팩터링. Generate 3D 실행은 ai-image-generation에서 확정한 pending 소유권/회수 패턴(runState.ts의 collectAbandonedRunNodeIds)을 그대로 재사용(중복 로직 없음). Meshy 응답(model_urls.glb)에 맞춰 three의 GLTFLoader로 로드, OrbitControls 연결, 뷰어 컨테이너에 nodrag/nowheel로 React Flow 제스처와 격리. docs/architecture.md '열린 질문' 섹션을 확정 문구로 대체, docs/acceptance-criteria.md 시나리오 9 신규 작성. pnpm turbo run build lint check-types test 15/15 통과(frontend 94 tests/13 files, 신규 26건).",
+        "2026-08-18 (QA): apps/frontend/src/pipeline/fanIn.ts·imageSelection.ts·runState.ts, apps/frontend/src/three/modelScene.ts·ModelViewer.tsx, apps/backend/src/routes/generate3d.ts·lib/meshyClient.ts를 '양쪽 동시 읽기'로 대조 — REST 응답 shape({modelUrl}) ↔ 프론트 소비 코드 일치, fan-in 정렬/선택 규칙이 테스트에서 실제 값 대조로 검증됨(존재 확인 아님), pending 소유권 로직이 runState.ts 한 곳에만 정의되고 GenerateImageNode/Generate3dNode 둘 다 재사용함을 grep으로 확인, apps/backend에 PipelineNode/NodeType 등 도메인 타입 등장 없음(grep 0건). docs/acceptance-criteria.md 시나리오 9의 UI 문자열·테스트명이 실제 코드와 일치. pnpm turbo run build lint check-types test 직접 재실행해 15/15 재확인.",
+        "2026-08-18 (리더 직접 브라우저 검증): QA가 jsdom 한계로 미검증으로 남긴 '실제 브라우저에서 OrbitControls로 회전 확인'을 리더가 직접 수행 — pnpm dev로 frontend(:5173)/backend(:3001) 실기동 후 Chrome으로 room 접속, Text Prompt→Generate Image→Generate 3D 노드를 연결. MESHY_API_KEY가 없어 실제 Meshy 호출은 불가하므로 fetch를 패치해 POST /api/generate-image·/api/generate-3d 응답만 모킹하고(경로/상태 전이는 실제 앱 로직 그대로, 실행 버튼 클릭 등 조작은 전부 실제 UI로 수행), Khronos 공개 샘플 glTF(Box.glb, apps/backend/uploads/에 임시로 내려받음, 검증 후 삭제·gitignore 대상이라 커밋에 미포함)를 modelUrl로 응답시켜 실제 WebGL 렌더링을 확인했다. 결과: 텍스트→이미지 연결 시 '이미지 생성' 버튼 활성화, 클릭 시 idle→ready 전이 및 썸네일 표시, 이미지→3D 연결 후 '3D 생성' 버튼 활성화(빈 상태 안내 문구 '이미지가 생성된 Generate Image 노드를 연결하세요' 소멸), 클릭 시 노드 카드 안에 실제 큐브가 조명/음영과 함께 렌더링됨(플레이스홀더 [3D_VIEWPORT_RENDERER] 사라짐), 뷰어 위에서 드래그 시 OrbitControls로 큐브가 실제로 회전(다른 면이 보임)하면서 React Flow 캔버스 자체는 팬 되지 않음(nodrag/nowheel 격리 확인), 콘솔 에러 없음. 미검증으로 남는 것은 실 MESHY_API_KEY를 쓴 종단 성공 경로(200 + 실제 Meshy 생성 모델)뿐이다."
+      ],
+      "notes": "옛 feature id는 preview-3d(별도 3D 프리뷰 탭)였으나, 2026-07-09 화면 구성 변경으로 Generate 3D 노드 안에서 렌더링하는 것으로 범위가 바뀌어 id/제목을 변경함. docs/architecture.md '열린 질문'(이미지를 고정된 3D 모델에 텍스처로 매핑하는 것인지, 별도 image-to-3D 생성 API를 쓰는 것인지)은 rest-api feature에서 이미 Meshy AI로 확정되어 있었고, 이 feature 시작 시점에 남아있던 것은 image fan-in 선택 규칙뿐이었다(위 evidence 참고). 번들 크기: three 추가로 frontend 번들이 gzip 329kB로 vite chunk-size 경고가 뜬다 — 코드 스플리팅은 optimization-pass feature 범위로 남긴다. 실 MESHY_API_KEY 종단 성공 경로(실제 200 + 실제 3D 에셋)는 이 세션 환경에 키가 없어 미검증 — 다음으로 이 부분을 만지는 사람이 실제 키로 확인할 것."
     },
     {
       "id": "optimization-pass",
