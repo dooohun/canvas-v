@@ -126,12 +126,14 @@
       "area": "apps/frontend",
       "title": "협업 파이프라인 캔버스 (Yjs 연동)",
       "user_visible_behavior": "pipeline-canvas의 로컬 노드/엣지 상태가 Yjs 공유 상태로 전환되어, 여러 사용자가 같은 room에서 실시간으로 같은 파이프라인을 함께 편집할 수 있다.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "docs/acceptance-criteria.md의 협업 시나리오(재작성 필요, 옛 시나리오 1~5에 대응)를 순서대로 수동 실행해 확인한다."
       ],
-      "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태이므로, 새 노드 파이프라인 기준으로 협업 시나리오를 먼저 구체적으로 작성해야 한다. pipeline-canvas, ws-protocol, shared-types(재구현)에 의존."
+      "evidence": [
+        "2026-08-17: usePipelineState의 로컬 useState를 제거하고 Y.Doc(nodes/edges Y.Map<Y.Map>)을 유일한 진실 소스로 전환하고, docs/ws-protocol.md의 커스텀 envelope을 말하는 WS provider와 awareness(선택 노드·커서) 공유를 배관했다. pnpm turbo run build lint check-types test 15/15 통과(frontend 31 tests/6 files, lint 경고 0). 실제 backend WS 릴레이(:3001)에 provider 3개를 붙여 협업 시나리오를 라이브 검증: 양방향 노드 추가·프롬프트 편집·노드 이동 실시간 반영, text→image 엣지 생성 및 image→text 거부(서버는 규칙을 모르며 검증은 클라이언트 전용), 동일 노드 동시 이동의 결정론적 수렴(양쪽 동일 좌표), 노드 삭제 시 고아 엣지 동시 제거, 뒤늦은 합류자의 SyncStep1/2 전체 상태 복원, awareness 전파와 떠난 피어 상태 제거까지 11개 항목 전부 확인. backend 프로세스를 kill한 뒤 재기동하는 라이브 시나리오에서 1초 간격 자동 재연결과 생존 클라이언트 Y.Doc 재업로드(신규 피어가 prompt까지 수신)를 확인했다. QA 과정에서 연결 실패 시 onerror 핸들러가 socket.close()를 호출해 close가 error를 재발화시키며 무한 재귀(RangeError)로 프로세스가 죽는 결함을 발견했고 — 이로 인해 시나리오 4-(3) 자동 재연결이 성립하지 않았다 — handleDisconnect() 호출로 교체해 수정한 뒤, 핸드셰이크 실패 시 재귀 없이 재연결 타이머가 정확히 1회만 걸리는지 확인하는 회귀 테스트를 추가했다(수정을 되돌리면 RangeError로 실패하는 것을 확인). 인코딩은 전량 y-protocols/lib0(수제 바이너리 파싱 부재를 grep으로 확인, y-websocket 미사용), apps/backend는 무수정(git diff main -- apps/backend/ 공백), 엣지 유효성은 shared-types의 canConnect를 재사용해 규칙 중복 정의 없음. docs/acceptance-criteria.md 협업 시나리오 1~5를 사전조건/조작순서/기대결과/자동화 가능 여부로 작성했고, 인용된 테스트 이름·UI 문자열·room 기본값이 실제 코드와 일치하는지 전수 대조했다. 미검증: 포트 핸들을 실제 마우스로 드래그하는 조작, 사람 2명 동시 조작 체감. Commit: 0e0f131 (브랜치 feature-loop/remaining-features)."
+      ],
+      "notes": "docs/acceptance-criteria.md가 스텁이었으나 이 feature 범위에서 협업 시나리오 1~5를 구체화했다(6~11은 TODO로 남김). pipeline-canvas, ws-protocol, shared-types(재구현)에 의존. 후속 과제: (1) IME 조합 중 원격 덮어쓰기 — TextPromptNode의 textarea가 Y.Doc 값을 받는 controlled 컴포넌트라 한글 IME 조합 중 원격 update가 같은 노드 prompt를 덮으면 조합이 끊길 수 있음(필드 단위 LWW 한계와 동일 뿌리, 해결하려면 prompt를 Y.Text로 승격 필요). (2) apps/backend/src/__tests__/shared-types.test.ts에 도메인 타입(PipelineNode 등)이 등장 — main 시점부터 있던 기존 파일이고 이번 feature가 건드리지 않았으나, shared-types 계약 확인용 테스트라도 '서버 코드에 도메인 타입 금지' 규칙 문구와 긴장 관계라 별도 판단 필요하면 후속 이슈로. (3) 포트 드래그 실조작(마우스)과 2인 동시 조작 체감은 미검증."
     },
     {
       "id": "ai-image-generation",
@@ -139,12 +141,14 @@
       "area": "apps/frontend + apps/backend",
       "title": "Generate Image 노드 실행 플로우",
       "user_visible_behavior": "사용자가 Text Prompt 노드를 Generate Image 노드에 연결하고 실행하면, REST API를 통해 이미지가 생성되고 그 결과가 Generate Image 노드에 반영된다(status: pending → ready/error).",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
-        "docs/acceptance-criteria.md의 생성 시나리오(재작성 필요, 옛 시나리오 6~8·10~11에 대응)를 순서대로 수동 실행해 확인한다."
+        "docs/acceptance-criteria.md 시나리오 6, 7, 8, 10, 11을 순서대로 수동 실행해 확인한다(각 시나리오의 '자동화 가능 여부'에 적힌 Vitest 테스트가 자동화 커버 범위)."
       ],
-      "evidence": [],
-      "notes": "docs/acceptance-criteria.md가 스텁 상태. rest-api, pipeline-canvas에 의존. 여러 Text Prompt 노드가 fan-in으로 연결됐을 때 프롬프트를 어떻게 합치는지는 docs/architecture.md '열린 질문'으로 미정 — 이 feature 구현 시 확정 필요."
+      "evidence": [
+        "2026-08-18 재검증(2회차): pnpm turbo run build lint check-types test 15/15 통과(frontend 63 tests, backend 31 tests). 1차 지적 2건 해소 확인 — (a) pending 고착: runState.ts의 소유자 이탈/타임아웃 판정과 PipelineCanvas의 awareness 연동으로 회수 경로가 열렸고, PipelineCanvas.test.tsx가 '소유자 이탈 → 안내 노출 → 재실행 → ready'와 '소유자 생존 시 버튼 잠금'을 함께 검증(시나리오 8(2)(7), 11 마지막 항목). (b) .env 배선: apps/backend를 실제 기동해 .env 존재 시 OPENAI_API_KEY 경고 소멸, .env 제거 시 경고 재출현을 확인했고, 로드된 키가 OpenAI에 실제 도달함을 무과금 요청으로 확인. 실서버 + Vite 프록시 경유로 POST /api/generate-image 502 {\"error\":\"image generation failed\"}, 빈 prompt 400, /uploads 200 image/png, 경로순회 404를 실측했고 응답 본문에 API 키 없음(시나리오 10(2), 11(2)). 이번 재검증에서 시나리오 11(1) 기대문구가 dev 프록시 실제 동작과 달라 docs/acceptance-criteria.md를 환경별 분기 서술로 수정. 서버 코드에 도메인 타입 미등장, 실행 상태는 Y.Doc에만 기록됨을 grep으로 재확인."
+      ],
+      "notes": "fan-in 조합 규칙 확정(2026-08-17): 연결된 textPrompt들의 prompt를 trim해 빈 값 제외 후, 캔버스 좌표 위→아래, 왼→오른쪽, 노드 id 사전순으로 정렬해 개행(\\n)으로 이어붙인다. 엣지 생성 순서가 아니라 좌표를 쓰는 이유는 모든 피어가 같은 문자열을 만들어야 하기 때문. docs/architecture.md '여러 입력(fan-in) 조합 규칙'에 기록. 입력 없음 처리: 조합 결과가 빈 문자열이면 실행 버튼을 비활성화하고 노드에 안내 문구를 노출한다(방어적으로 실행이 호출되면 API 호출 없이 status=error + 안내 메시지). 실행 상태는 전부 Y.Doc(Y.Map)에만 기록해 협업 중인 다른 사용자에게도 pending/ready/error가 실시간으로 보인다. dev에서는 Vite 프록시(/api, /uploads → :3001)로 same-origin 유지 — backend에 CORS 추가 불필요. 실제 OPENAI_API_KEY가 없어 종단(실제 이미지 생성) 경로는 미검증, mock 기반 전이/에러 처리만 자동 검증됨. | QA 1차 지적 반영(2026-08-17): (1) pending 고착 결함 — 실행 시작 시 노드에 pendingRun={clientId,startedAt}를 함께 기록하고, 소유자가 awareness에서 사라졌거나 타임아웃을 넘긴 실행은 '버려진 실행'으로 보아 남은 피어가 재실행할 수 있게 했다(docs/architecture.md '실행 상태(pending) 소유권과 회수'). 생성 요청에도 AbortController 타임아웃(2분)을 추가해 매달린 요청이 스스로 error로 끝나게 했다. (2) backend가 apps/backend/.env를 읽지 않던 배선 누락 — src/index.ts에서 process.loadEnvFile로 로드하고 키 미설정 시 기동 경고를 출력, .env.example 추가. 실제 OpenAI 호출은 크레딧 소모가 있어 리더/사용자 승인 전까지 미수행(키 로드 여부는 기동 경고 부재로 확인). | QA 2차 재검증(2026-08-18): 위 두 수정 모두 코드 직접 읽고 실기동으로 재확인, evidence 참고. 재검증 중 docs/acceptance-criteria.md 시나리오 11(1) 기대문구가 실제 dev 프록시 동작(ECONNREFUSED를 프록시가 가로채 본문 없는 500 → 폴백 문구 '이미지 생성에 실패했습니다' 표시, '서버에 연결할 수 없습니다'가 아님)과 달라 환경별 분기 서술로 수정. 남은 미검증: (1) 실 API 키 종단 성공 경로(200 응답) — 계정이 billing hard limit 상태라 이 환경에서 확인 불가(키 로딩 자체는 무과금 요청으로 도달 확인됨), 시나리오 6(6)/7(5)(6)/10(1)(3)(4)(5)의 실제 생성 결과 표시는 자동화 테스트(fetch mock)까지만 검증. (2) 실제 브라우저 수동 조작(React Flow 포트 드래그, 두 창 동시 편집 체감) 미수행 — jsdom 컴포넌트 테스트 범위까지만 검증. (3) 시나리오 11(3) 429 rate limit 실제 재현 미수행(코드 경로·매핑만 확인). (4) 범위 밖 발견: docs/api-spec.md가 OpenAI 호출에 response_format:\"b64_json\"을 명시하지만 openaiClient.ts는 이 파라미터를 보내지 않음(gpt-image-1은 기본이 b64이고 이 파라미터 자체를 받지 않아 코드가 맞고 문서가 낡음) — 이번 feature가 건드린 부분이 아니라 rest-api feature에서 넘어온 서술 오류이므로 후속 정리 필요."
     },
     {
       "id": "generate-3d-preview",
@@ -152,12 +156,16 @@
       "area": "apps/frontend",
       "title": "Generate 3D 노드 렌더링",
       "user_visible_behavior": "Generate 3D 노드에 이미지가 연결되고 실행되면, 노드 내부(또는 확대 뷰)에서 Three.js로 결과가 렌더링되고 OrbitControls로 회전하며 확인할 수 있다.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "docs/acceptance-criteria.md의 3D 시나리오(재작성 필요, 옛 시나리오 9에 대응)를 수동 실행해 확인한다."
       ],
-      "evidence": [],
-      "notes": "옛 feature id는 preview-3d(별도 3D 프리뷰 탭)였으나, 2026-07-09 화면 구성 변경으로 Generate 3D 노드 안에서 렌더링하는 것으로 범위가 바뀌어 id/제목을 변경함. docs/architecture.md '열린 질문'(이미지를 고정된 3D 모델에 텍스처로 매핑하는 것인지, 별도 image-to-3D 생성 API를 쓰는 것인지)이 이 feature를 시작하기 전에 확정돼야 한다 — 확정에 따라 rest-api feature의 범위도 달라질 수 있다."
+      "evidence": [
+        "2026-08-18: image fan-in 선택 규칙(여러 generateImage → 하나의 generate3d)을 확정 — POST /api/generate-3d가 이미지 하나만 받으므로 텍스트 fan-in과 동일한 정렬 기준(캔버스 좌표 y→x→노드id)으로 정렬한 뒤 첫 번째 status:'ready' 이미지를 사용한다. 정렬 함수를 apps/frontend/src/pipeline/fanIn.ts에 한 번만 정의해 promptComposition.ts(텍스트)와 imageSelection.ts(이미지)가 공유하도록 리팩터링. Generate 3D 실행은 ai-image-generation에서 확정한 pending 소유권/회수 패턴(runState.ts의 collectAbandonedRunNodeIds)을 그대로 재사용(중복 로직 없음). Meshy 응답(model_urls.glb)에 맞춰 three의 GLTFLoader로 로드, OrbitControls 연결, 뷰어 컨테이너에 nodrag/nowheel로 React Flow 제스처와 격리. docs/architecture.md '열린 질문' 섹션을 확정 문구로 대체, docs/acceptance-criteria.md 시나리오 9 신규 작성. pnpm turbo run build lint check-types test 15/15 통과(frontend 94 tests/13 files, 신규 26건).",
+        "2026-08-18 (QA): apps/frontend/src/pipeline/fanIn.ts·imageSelection.ts·runState.ts, apps/frontend/src/three/modelScene.ts·ModelViewer.tsx, apps/backend/src/routes/generate3d.ts·lib/meshyClient.ts를 '양쪽 동시 읽기'로 대조 — REST 응답 shape({modelUrl}) ↔ 프론트 소비 코드 일치, fan-in 정렬/선택 규칙이 테스트에서 실제 값 대조로 검증됨(존재 확인 아님), pending 소유권 로직이 runState.ts 한 곳에만 정의되고 GenerateImageNode/Generate3dNode 둘 다 재사용함을 grep으로 확인, apps/backend에 PipelineNode/NodeType 등 도메인 타입 등장 없음(grep 0건). docs/acceptance-criteria.md 시나리오 9의 UI 문자열·테스트명이 실제 코드와 일치. pnpm turbo run build lint check-types test 직접 재실행해 15/15 재확인.",
+        "2026-08-18 (리더 직접 브라우저 검증): QA가 jsdom 한계로 미검증으로 남긴 '실제 브라우저에서 OrbitControls로 회전 확인'을 리더가 직접 수행 — pnpm dev로 frontend(:5173)/backend(:3001) 실기동 후 Chrome으로 room 접속, Text Prompt→Generate Image→Generate 3D 노드를 연결. MESHY_API_KEY가 없어 실제 Meshy 호출은 불가하므로 fetch를 패치해 POST /api/generate-image·/api/generate-3d 응답만 모킹하고(경로/상태 전이는 실제 앱 로직 그대로, 실행 버튼 클릭 등 조작은 전부 실제 UI로 수행), Khronos 공개 샘플 glTF(Box.glb, apps/backend/uploads/에 임시로 내려받음, 검증 후 삭제·gitignore 대상이라 커밋에 미포함)를 modelUrl로 응답시켜 실제 WebGL 렌더링을 확인했다. 결과: 텍스트→이미지 연결 시 '이미지 생성' 버튼 활성화, 클릭 시 idle→ready 전이 및 썸네일 표시, 이미지→3D 연결 후 '3D 생성' 버튼 활성화(빈 상태 안내 문구 '이미지가 생성된 Generate Image 노드를 연결하세요' 소멸), 클릭 시 노드 카드 안에 실제 큐브가 조명/음영과 함께 렌더링됨(플레이스홀더 [3D_VIEWPORT_RENDERER] 사라짐), 뷰어 위에서 드래그 시 OrbitControls로 큐브가 실제로 회전(다른 면이 보임)하면서 React Flow 캔버스 자체는 팬 되지 않음(nodrag/nowheel 격리 확인), 콘솔 에러 없음. 미검증으로 남는 것은 실 MESHY_API_KEY를 쓴 종단 성공 경로(200 + 실제 Meshy 생성 모델)뿐이다."
+      ],
+      "notes": "옛 feature id는 preview-3d(별도 3D 프리뷰 탭)였으나, 2026-07-09 화면 구성 변경으로 Generate 3D 노드 안에서 렌더링하는 것으로 범위가 바뀌어 id/제목을 변경함. docs/architecture.md '열린 질문'(이미지를 고정된 3D 모델에 텍스처로 매핑하는 것인지, 별도 image-to-3D 생성 API를 쓰는 것인지)은 rest-api feature에서 이미 Meshy AI로 확정되어 있었고, 이 feature 시작 시점에 남아있던 것은 image fan-in 선택 규칙뿐이었다(위 evidence 참고). 번들 크기: three 추가로 frontend 번들이 gzip 329kB로 vite chunk-size 경고가 뜬다 — 코드 스플리팅은 optimization-pass feature 범위로 남긴다. 실 MESHY_API_KEY 종단 성공 경로(실제 200 + 실제 3D 에셋)는 이 세션 환경에 키가 없어 미검증 — 다음으로 이 부분을 만지는 사람이 실제 키로 확인할 것."
     },
     {
       "id": "optimization-pass",
@@ -165,12 +173,15 @@
       "area": "apps/frontend",
       "title": "Three.js 최적화",
       "user_visible_behavior": "Generate 3D 노드 렌더링이 최적화 적용 전보다 드로우콜/프레임 시간이 개선된 상태로 동작한다.",
-      "status": "not_started",
+      "status": "passing",
       "verification": [
         "docs/product-plan.md 6번 섹션(Three.js 최적화 체크리스트)의 항목 중 적용한 것을 기록한다.",
         "최적화 전/후 드로우콜과 프레임 시간을 측정해 수치로 비교 기록한다."
       ],
-      "evidence": [],
+      "evidence": [
+        "2026-08-18: 적용 항목 = 체크리스트 3(불필요한 리렌더 방지 → 온디맨드 렌더링), 5(프레임 측정), 1의 해제 부분(머티리얼이 들고 있는 Texture까지 dispose), 4는 generate-3d-preview에서 이미 적용됨. 2(지오메트리/머티리얼 공유)는 노드마다 WebGL 컨텍스트가 분리돼 GPU 리소스 공유가 불가능해 미적용(사유는 docs/product-plan.md 6.1에 기록). 핵심 변경: apps/frontend/src/three/modelScene.ts의 렌더 루프가 매 프레임 무조건 render()하던 것을 OrbitControls의 change 이벤트(댐핑 중에는 매 프레임 발생)와 모델 로드 완료 시에만 그리도록 변경. 측정(apps/frontend/src/three/__tests__/renderBudget.test.ts, 드로우콜 1/프레임 모델 기준): 유휴 120틱(≈2초 @60fps) 기준 최적화 전 렌더 프레임 120 / 드로우콜 120 → 후 렌더 프레임 1 / 드로우콜 1 (-99.2%), 카메라 조작 31틱은 전/후 모두 31프레임(조작 품질 유지). 전 수치는 최적화 적용 전 같은 하네스로 실측했고 ([render-budget] ticks=120 rendered frames=120 draw calls=120), 후 수치는 CI에서 계속 회귀 검사된다. 계측 API: ModelSceneHandle.getStats()가 ticks/frames/drawCalls(renderer.info.render.calls 합)/renderMs 누적, 개발 모드 + ?three-stats 쿼리일 때만 1초 간격 콘솔 로그(프로덕션 빌드에서는 import.meta.env.DEV 가드로 제거). 번들: Generate3dNode가 ModelViewer를 React.lazy로 로드해 three를 초기 청크에서 분리 — 초기 청크 1,160.77kB(gzip 328.79kB) → 531.41kB(gzip 167.70kB, -49%), ModelViewer 청크 629.17kB(gzip 160.66kB)는 3D 결과가 생겼을 때만 로드. pnpm turbo run build lint check-types test 15/15 통과(frontend 100 tests/14 files). 미검증: 실제 브라우저 GPU에서의 프레임 시간(ms)과 renderer.info 실측은 이 환경에서 수행하지 않았다 — 위 수치는 스텁 렌더러 기반 드로우콜/프레임 카운트다. 실브라우저 확인은 pnpm dev 후 http://localhost:5173/?three-stats 로 접속해 3D 노드가 ready인 상태에서 콘솔의 [three-stats] 로그(idle 시 rendered frames/s ≈ 0, 드래그 중 ≈ 60)를 보는 절차로 남긴다. 알려진 한계: 온디맨드 렌더링이라 캔버스 크기/DPR이 바뀌는 상황(노드 카드 리사이즈, 모니터 간 이동)에서는 다시 그릴 트리거가 없다 — 현재 노드 카드는 고정 폭(w-80)+aspect-square라 발생하지 않는다.",
+        "2026-08-18 (QA 재검증): renderBudget.test.ts를 직접 읽어 WebGLRenderer를 스텁해 render() 호출/info.render.calls를 실제로 카운트하는 구조임을 확인(상상 수치 아님), 테스트 실행 stdout에서 [render-budget] ticks=120 rendered frames=1 draw calls=1 실제 출력 재현. docs/product-plan.md §6과 modelScene.ts를 대조해 적용/미적용 판단(특히 2번 미적용 사유: WebGL 리소스는 컨텍스트에 종속되어 노드별 독립 캔버스 구조상 공유 불가)이 타당함을 확인. pnpm turbo run build lint check-types test 재실행 15/15 통과(frontend 100 tests/14 files, backend 31 tests/7 files), 빌드 산출물 크기(초기 청크 531.41kB/gzip 167.70kB, ModelViewer 청크 629.17kB/gzip 160.67kB)가 evidence와 일치함을 직접 확인. 실브라우저 재검증: pnpm dev로 프론트(5173)+백엔드(3001) 기동, fetch를 패치해 /api/generate-image·/api/generate-3d만 모킹하고(나머지는 실제 fetch) Khronos 공개 Box.glb를 modelUrl로 응답시켜 실제 UI로 텍스트→이미지→3D 노드를 순서대로 실행 — 3D 노드 카드에 실제 조명/음영 있는 큐브가 렌더링됨, http://localhost:5173/?three-stats의 콘솔 [three-stats] 로그가 idle 상태에서 rendered frames/s 0.0으로 떨어지는 것 실측(implementer가 남긴 확인 절차 그대로 재현), 5초 이상 idle에도 캔버스의 큐브가 사라지거나 깜빡이지 않음(온디맨드 렌더링의 최대 리스크로 지목됐던 항목 해소), 드래그 시 OrbitControls로 매끄럽게 회전하고 React Flow 캔버스는 팬되지 않음(nodrag/nowheel 격리 유지), 콘솔 에러 0건. modelScene.test.ts/ModelViewer.test.tsx 기존 테스트 전부 유지되고(ModelViewer.tsx는 이번 feature에서 무수정) 회귀 없음. CLAUDE.md 규칙(불필요한 주석 없음, 백엔드 무수정) 준수 확인."
+      ],
       "notes": "docs/product-plan.md 6번 섹션에 우선순위가 매겨진 체크리스트가 이미 작성되어 있다 (텍스처 재사용, 지오메트리/머티리얼 공유, 리렌더 방지, 픽셀 비율 상한, 프레임 측정). 최소 1~2번만 적용해도 벤치마크 비교가 가능하다고 명시되어 있음. generate-3d-preview feature에 의존(그 안의 렌더링을 최적화하는 것이므로)."
     }
   ]

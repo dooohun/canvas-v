@@ -3,6 +3,7 @@ export type { PipelineEdge } from './edge.js';
 export type {
   Generate3dNode,
   GenerateImageNode,
+  NodeRunState,
   NodeStatus,
   NodeType,
   PipelineNode,

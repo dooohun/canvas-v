@@ -133,3 +133,32 @@
    HUD 또는 콘솔 로그를 최적화 전/후 비교용으로 남긴다.
 
 우선순위가 가장 높은 1~2번만 적용해도 벤치마크 비교 기록은 가능하다.
+
+### 6.1 적용 결과 (2026-08-18, `optimization-pass`)
+
+| 항목 | 적용 | 내용 |
+|------|------|------|
+| 1. 텍스처 재사용/해제 | 부분 적용 | 노드 하나당 씬 하나이고 `modelUrl`이 바뀌면 씬을 통째로 재생성하므로 "같은 텍스처를 `needsUpdate`로 갱신"할 지점이 없다. 대신 누락돼 있던 해제를 채웠다 — `material.dispose()`는 텍스처를 해제하지 않으므로 `disposeMaterial()`이 머티리얼이 들고 있는 `Texture` 인스턴스를 모두 `dispose()`한다. |
+| 2. 지오메트리/머티리얼 공유 | 미적용 | Generate 3D 노드마다 캔버스·WebGL 컨텍스트가 분리돼 있어 GPU 리소스를 공유할 수 없다(컨텍스트별로 다시 업로드되고, 한쪽의 `dispose()`가 다른 쪽을 깨뜨린다). 여러 노드가 같은 모델을 띄우는 경우의 절감은 3번(온디맨드 렌더링)으로 대체했다. |
+| 3. 불필요한 리렌더 방지 | 적용 | 렌더 루프가 React state를 건드리지 않는 구조는 이미 갖춰져 있었고(`createModelScene`이 React 밖의 순수 배관), 여기에 **온디맨드 렌더링**을 추가했다. 매 프레임 무조건 `renderer.render()` 하던 것을 `controls`의 `change` 이벤트(댐핑이 잦아들 때까지 매 프레임 발생)와 모델 로드 완료 시에만 그리도록 바꿨다. |
+| 4. 픽셀 비율 상한 | 적용(기존) | `renderer.setPixelRatio(Math.min(devicePixelRatio, 2))`가 `generate-3d-preview`에서 이미 들어가 있었다. |
+| 5. 프레임 측정 | 적용 | `ModelSceneHandle.getStats()`가 `ticks`/`frames`/`drawCalls`(`renderer.info.render.calls` 합)/`renderMs`를 누적한다. 개발 모드에서 `?three-stats` 쿼리로 접속했을 때만 1초 간격 콘솔 로그가 돈다(프로덕션 빌드에서는 `import.meta.env.DEV` 가드로 제거됨). |
+
+**측정 (`apps/frontend/src/three/__tests__/renderBudget.test.ts`, 드로우콜 1회/프레임 모델 기준)**
+
+| 시나리오 | 최적화 전 | 최적화 후 |
+|----------|-----------|-----------|
+| 유휴 상태 120틱(≈2초 @60fps) | 렌더 프레임 120, 드로우콜 120 | 렌더 프레임 1, 드로우콜 1 (**-99.2%**) |
+| 카메라 조작 중 31틱 | 렌더 프레임 31 | 렌더 프레임 31 (조작 품질 유지) |
+
+즉 노드당 유휴 비용이 60 draw call/s에서 0으로 떨어진다(첫 프레임 이후). 노드가 N개면 절감도 N배다.
+
+**번들 (`pnpm --filter frontend build`)** — 런타임 최적화와는 별개로 `generate-3d-preview`에서
+넘어온 항목. `Generate3dNode`가 `ModelViewer`를 `React.lazy`로 불러 three를 초기 번들에서 뺐다.
+
+| | 최적화 전 | 최적화 후 |
+|---|---|---|
+| 초기 청크 | 1,160.77 kB (gzip 328.79 kB) | 531.41 kB (**gzip 167.70 kB, -49%**) |
+| 지연 로드 청크 | 없음 | `ModelViewer-*.js` 629.17 kB (gzip 160.66 kB) — 3D 결과가 실제로 생겼을 때만 로드 |
+
+vite의 500 kB 경고는 여전히 뜨지만 대상이 three가 아니라 앱 본체 청크(531 kB)로 바뀌었다.

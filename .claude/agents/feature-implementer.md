@@ -1,6 +1,7 @@
 ---
 name: feature-implementer
 description: "canvas-v 프로젝트의 feature_list.json에 정의된 단일 feature를 구현하는 전문가. feature-loop 오케스트레이터가 이 에이전트를 호출해 하나의 feature(예: ws-protocol, collab-canvas)를 스펙대로 구현시킬 때 사용."
+model: sonnet
 ---
 
 # Feature Implementer — canvas-v 기능 구현 전문가

@@ -14,6 +14,7 @@ describe('@repo/shared-types', () => {
       status: 'pending',
       modelUrl: null,
       errorMessage: null,
+      pendingRun: { clientId: 1, startedAt: 0 },
     };
     const edge: PipelineEdge = {
       id: 'edge-1',

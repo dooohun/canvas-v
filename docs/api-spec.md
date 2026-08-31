@@ -22,8 +22,8 @@
 
 Generate Image 노드를 실행하면 클라이언트가 호출한다. 어떤 Text Prompt 노드들이 연결되어
 있었는지, 여러 개면 어떻게 합쳤는지는 클라이언트가 이미 하나의 문자열로 만들어 보낸다
-(fan-in 조합 규칙 자체는 `docs/architecture.md` "열린 질문"으로 아직 미정 — 이 엔드포인트는
-합쳐진 결과 문자열 하나만 받는다).
+(fan-in 조합 규칙은 `docs/architecture.md` "여러 입력(fan-in) 조합 규칙"에서 확정 — 이
+엔드포인트는 합쳐진 결과 문자열 하나만 받으며 규칙 자체는 모른다).
 
 **Request**
 
@@ -53,10 +53,10 @@ URL은 시간이 지나면 만료되므로, 우리 서버에 영구적으로 남
 
 ## `POST /api/generate-3d`
 
-Generate 3D 노드를 실행하면 클라이언트가 호출한다. 여러 Generate Image 노드가 fan-in으로
-연결된 경우 어떤 이미지(들)를 보낼지는 아직 미정(`docs/architecture.md` "열린 질문") —
-이 엔드포인트는 우선 이미지 하나만 받는 것으로 정의하고, 여러 장 조합은 `ai-image-generation`/
-`generate-3d-preview` feature 구현 시점에 다시 확정한다.
+Generate 3D 노드를 실행하면 클라이언트가 호출한다. 이 엔드포인트는 이미지 **하나**만 받는다.
+여러 Generate Image 노드가 fan-in으로 연결된 경우 어느 이미지를 보낼지는 클라이언트가 정하며
+(캔버스 좌표 순서상 첫 번째 `ready` 이미지 — `docs/architecture.md` "여러 입력(fan-in) 조합 규칙"),
+서버는 그 선택 규칙을 알지 못한다.
 
 **Request**
 

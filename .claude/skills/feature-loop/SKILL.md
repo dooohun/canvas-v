@@ -54,6 +54,38 @@ jq -n -c \
 이 로그는 하네스 운영 관찰용이므로 `feature_list.json`의 `evidence`/`notes`와
 별개다 — 서로의 내용을 복사하지 않는다.
 
+## 브랜치 전략
+
+이 하네스는 `main`에 직접 커밋하지 않는다. 모든 feature 작업은 하나의 공유 작업 브랜치
+`feature-loop/remaining-features`에서 이루어지고, `feature_list.json`의 모든 feature가
+`passing`이 된 시점에 그 브랜치를 `main`으로 향하는 PR로 한 번만 올린다(사용자가 직접
+리뷰하고 merge). feature 하나 끝날 때마다 PR을 열지 않는다 — 자동 구현 루프 특성상 중간
+산출물에 리팩터링이 덜 끝난 코드가 섞이기 쉬우므로, 리뷰는 전체가 끝난 뒤 한 번에 받는다.
+
+- Phase 1에서 현재 브랜치가 `feature-loop/remaining-features`가 아니면 만들거나(없으면
+  `git checkout -b`) 전환한다(`git checkout`). 이미 그 브랜치면 그대로 둔다.
+- Phase 4의 커밋은 이 브랜치에서 이루어진다(`main`이 아님).
+- Phase 5에서 이번 커밋으로 9개 feature 전부 `passing`이 되었는지 확인하고, 맞다면
+  PR을 생성한다(아래 "완료 시 PR 자동 생성" 참고). 아직 남은 feature가 있으면 PR을
+  만들지 않고 그대로 종료 — 다음 호출이 같은 브랜치에서 이어간다.
+
+### 완료 시 PR 자동 생성
+
+9개 feature 전부 `passing`이 된 Phase 5에서만 실행한다(그 전에는 생략):
+
+1. `git push -u origin feature-loop/remaining-features`로 브랜치를 원격에 올린다.
+2. `.github/PULL_REQUEST_TEMPLATE.md`가 있으면 GitHub가 PR 생성 시 자동으로 그 내용을
+   본문에 채운다 — 리더는 그 템플릿의 각 섹션(Summary, 포함된 feature, 리뷰어가 특히
+   봐야 할 곳, 검증 방법, 브레이킹 체인지/후속 작업)을 실제 내용으로 채워 넣는다.
+   특히 "리뷰어가 특히 봐야 할 곳" 섹션에는 각 feature의 evidence/notes에 남아있는
+   "미확인" "임시방편" "다음에 확정 필요" 류의 기록을 전부 모아 옮겨 적는다 — 이 하네스가
+   자동으로 만든 코드를 사람이 리뷰할 때 가장 먼저 볼 곳이므로 절대 비워두지 않는다.
+3. `gh pr create --base main --head feature-loop/remaining-features --title "..." --body "$(cat <<'EOF' ... EOF)"`로
+   PR을 생성한다(HEREDOC으로 본문 전달). 제목은 "feature-loop: N개 feature 구현 완료
+   (9/9 passing)" 형태.
+4. 생성된 PR URL을 사용자에게 보고한다. **여기서 PR을 병합하거나 `gh pr merge`를
+   호출하지 않는다** — 사용자가 직접 리뷰 후 병합한다.
+
 ## 에이전트 구성
 
 | 팀원 | 에이전트 타입 | 역할 | 산출물 |
@@ -61,7 +93,9 @@ jq -n -c \
 | feature-implementer | `feature-implementer` (커스텀) | 배정된 feature 구현 | 코드 변경 + 구현 요약 |
 | qa-verifier | `qa-verifier` (커스텀) | verification 항목 실제 실행·검증 | 검증 리포트 + evidence 초안 |
 
-두 팀원 모두 `Agent` 도구 호출 시 `model: "opus"`를 명시한다.
+`Agent` 도구 호출 시 feature-implementer, qa-verifier 둘 다 `model: "sonnet"`을
+명시한다(토큰 비용 절감을 위해 QA에 이어 implementer도 sonnet으로 낮춤 — 사용자 요청,
+2026-08-18).
 
 ## 워크플로우
 
@@ -87,9 +121,11 @@ jq -n -c \
 
 ### Phase 1: 준비
 
-1. 선택한 feature의 `status`를 `in_progress`로 변경해 `feature_list.json`에 즉시 반영한다
+1. 현재 브랜치가 `feature-loop/remaining-features`인지 확인한다("브랜치 전략" 섹션
+   참고). 아니면 만들거나 전환한다.
+2. 선택한 feature의 `status`를 `in_progress`로 변경해 `feature_list.json`에 즉시 반영한다
    (팀 작업 도중 실패해도 다음 호출이 같은 feature를 이어서 잡을 수 있도록).
-2. feature가 의존하는 문서 목록을 정리한다: `docs/architecture.md`, `docs/data-model.md`,
+3. feature가 의존하는 문서 목록을 정리한다: `docs/architecture.md`, `docs/data-model.md`,
    `docs/api-spec.md`, `docs/ws-protocol.md`, `docs/product-plan.md`, 필요 시
    `docs/acceptance-criteria.md`(스텁이면 이번 feature 범위에서 구체화 필요).
 
@@ -106,7 +142,7 @@ jq -n -c \
 Agent(
   name: "feature-implementer",
   subagent_type: "feature-implementer",
-  model: "opus",
+  model: "sonnet",
   run_in_background: true,
   prompt: "{선택된 feature 객체 전체(JSON)} + 관련 docs 경로 목록 + session-handoff.md/claude-progress.md 요약. '이 feature를 구현하고, 완료되면 qa-verifier에게 SendMessage로 변경 파일 목록과 verification 항목별 확인 방법을 알려라' 지시."
 )
@@ -114,7 +150,7 @@ Agent(
 Agent(
   name: "qa-verifier",
   subagent_type: "qa-verifier",
-  model: "opus",
+  model: "sonnet",
   run_in_background: true,
   prompt: "{선택된 feature 객체 전체(JSON)}. 'feature-implementer로부터 구현 완료 알림을 SendMessage로 기다렸다가, verification 배열을 실제로 실행해 검증하라. 결함 발견 시 feature-implementer에게 SendMessage로 구체적 수정 요청, 전체 통과 시 리더(main)에게 SendMessage로 evidence 초안과 함께 보고하라' 지시."
 )
@@ -152,8 +188,9 @@ QA가 전체 통과를 보고한 경우만 진행한다.
    기존 관례(진행 로그는 상태 스냅샷 위주, "왜"는 Decisions Made에)를 따른다.
 4. `pnpm turbo run build lint check-types test`(`./init.sh`)가 전부 통과하는지
    마지막으로 한 번 더 확인한다(팀 작업 중 다른 회귀가 섞이지 않았는지).
-5. git commit 1개 생성 — 커밋 메시지는 이번 feature의 "왜"를 담는다(무엇을 했는지는
-   diff로 보이므로). hook 실패 시 원인을 고쳐 재시도(`--no-verify` 금지).
+5. git commit 1개 생성 — **`feature-loop/remaining-features` 브랜치에서** 커밋한다(`main`
+   아님, "브랜치 전략" 섹션 참고). 커밋 메시지는 이번 feature의 "왜"를 담는다(무엇을
+   했는지는 diff로 보이므로). hook 실패 시 원인을 고쳐 재시도(`--no-verify` 금지).
 6. `final_status` 이벤트를 `{"status": "passing"}`으로 기록한다.
 
 에스컬레이션으로 넘어온 경우(3회 왕복 후 미해결):
@@ -168,12 +205,16 @@ QA가 전체 통과를 보고한 경우만 진행한다.
 
 1. 팀원들에게 종료 알림(SendMessage). 정식 팀(`TeamCreate`)로 구성했다면 `TeamDelete`로
    정리한다 — 이름 지정 서브 에이전트로 구성했다면 별도 정리 없이 그대로 둔다.
-2. 사용자에게 결과 요약: "{feature.id} {passing|blocked}. 전체 진행률 N/9 passing.
-   다음 대상: {next feature.id 또는 '없음(전체 완료)'}."
-3. **완료 서약은 실제로 9개 feature 전부 `passing`일 때만 출력한다.** 그 외에는
+2. 이번 커밋으로 9개 feature 전부 `passing`이 되었으면 "브랜치 전략 > 완료 시 PR 자동
+   생성" 절차를 실행해 PR을 만든다. 아직 아니면 이 단계를 건너뛴다.
+3. 사용자에게 결과 요약: "{feature.id} {passing|blocked}. 전체 진행률 N/9 passing.
+   다음 대상: {next feature.id 또는 '없음(전체 완료)'}." PR을 만들었다면 그 URL도
+   함께 보고한다.
+4. **완료 서약은 실제로 9개 feature 전부 `passing`일 때만 출력한다.** 그 외에는
    진행 상황만 정직하게 보고하고, "아직 완료 아님"을 분명히 한다 — 이 스킬을 Ralph
    Loop 같은 반복 실행기가 completion-promise 판정에 그대로 쓸 수 있어야 하므로,
-   거짓 완료 신호를 내보내면 안 된다.
+   거짓 완료 신호를 내보내면 안 된다. PR을 열었다는 것이 "완료"는 아니다 — 사용자가
+   리뷰·병합해야 최종 완료다.
 
 ## 에러 핸들링
 
